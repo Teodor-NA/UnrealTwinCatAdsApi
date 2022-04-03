@@ -6,8 +6,8 @@
 #include "TcAdsApiTypes.generated.h"
 
 // Forward declarations
-class UTcAdsModule;
-class ATcAdsMaster;
+// class UTcAdsModule;
+// class ATcAdsMaster;
 
 // Making the type enum explicitly since including wtypes.h seems to break Unreal
 
@@ -181,6 +181,18 @@ public:
 private:
 	T* Data_;
 	size_t Count_;
+};
+
+class FSimpleAsciiString : public TSimpleBuffer<char>
+{
+public:
+	
+	explicit FSimpleAsciiString(const char* C_String) : TSimpleBuffer(strlen(C_String) + 1)
+	{
+		strcpy_s(GetData(), ByteSize(), C_String);
+	}
+
+	explicit FSimpleAsciiString(const FString& Src) : FSimpleAsciiString(StringCast<ANSICHAR>(*Src).Get()) {}
 };
 
 USTRUCT()

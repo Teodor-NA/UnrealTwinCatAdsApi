@@ -12,16 +12,20 @@
 void FTwinCatAdsApiModule::StartupModule()
 {
 	// This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
-
+#if !(PLATFORM_WINDOWS && PLATFORM_64BITS)
+	FMessageDialog::Open(EAppMsgType::Ok, LOCTEXT("AdsLibrary",
+		"Sorry. This plugin is currently only supported by Windows x64. (Maybe I'll add support for other platforms later...)"));
+	return;
+#endif
+	
 	// Get the base directory of this plugin
 	FString BaseDir = IPluginManager::Get().FindPlugin("TwinCatAdsApi")->GetBaseDir();
 
 	// Add on the relative location of the third party dll and load it
-	FString LibraryPath;
-#if PLATFORM_WINDOWS
-//	LibraryPath = FPaths::Combine(*BaseDir, TEXT("Binaries/ThirdParty/Win64/TcAdsDll.dll"));
-	LibraryPath = FPaths::Combine(*BaseDir, TEXT("Source/ThirdParty/TwinCatAdsApiLibrary/Bin/TcAdsDll.dll"));
-#endif // PLATFORM_WINDOWS
+	// FString LibraryPath;
+
+	//	LibraryPath = FPaths::Combine(*BaseDir, TEXT("Binaries/ThirdParty/Win64/TcAdsDll.dll"));
+	FString LibraryPath = FPaths::Combine(*BaseDir, TEXT("Source/ThirdParty/TwinCatAdsApiLibrary/Bin/TcAdsDll.dll"));
 
 	// ExampleLibraryHandle = !LibraryPath.IsEmpty() ? FPlatformProcess::GetDllHandle(*LibraryPath) : nullptr;
 	if (LibraryPath.IsEmpty())

@@ -24,8 +24,6 @@ public:
 	void UpdateValues();
 	void UpdateVars();
 
-	void AddModule(UTcAdsModule* AdsModule);
-
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
@@ -34,20 +32,27 @@ protected:
 
 	AmsAddr TargetAmsAddress_;
 	FTimerHandle GetDataTimerHandle_;
-	FTimerHandle CheckVarsTimerHandle_;
+	// FTimerHandle CheckVarsTimerHandle_;
 
 	TSimpleBuffer<FDataPar> ReqBuffer_;
 	TSimpleBuffer<char> ReceiveBuffer_;
-	unsigned long ValidVariableCount_;
+	// unsigned long ValidVariableCount_;
 	
 public:	
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
+	// float* GetReadVariableReferenceByName(const FString& Name);
+	
 	AdsVersion DllVersion;
 	AmsAddr LocalAmsAddr;
 	int32 AdsPort;
 
+	UFUNCTION(BlueprintCallable)
+	float GetReadVariable(int Index) const;
+	UFUNCTION(BlueprintCallable)
+	void SetWriteVariable(int Index, float Val);
+	
 	/*!
 	 * Intervals between calls to the plc to refresh data [s]
 	 */
@@ -56,15 +61,17 @@ public:
 	/*!
 	 * Intervals between when to check for new variables [s]
 	 */
-	UPROPERTY(EditAnywhere, Category = "Time")
-	float CheckForVariablesDelay;
+	// UPROPERTY(EditAnywhere, Category = "Time")
+	// float CheckForVariablesDelay;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, EditFixedSize, Category = "Target")
 	TArray<uint8> TargetAmsNetId;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Target")
 	int32 TargetAmsPort;
 	
-	UPROPERTY(VisibleAnywhere, Category = "Attached modules")
-	TArray<UTcAdsModule*> AttachedModules;
+	UPROPERTY(EditAnywhere, Category = "Subscribed Variables")
+	TArray<FSubscriberInputData> ReadVariableList;
+	UPROPERTY(EditAnywhere, Category = "Subscribed Variables")
+	TArray<FSubscriberInputData> WriteVariableList;
 
 };
