@@ -19,21 +19,22 @@ void FTwinCatAdsApiModule::StartupModule()
 	// Add on the relative location of the third party dll and load it
 	FString LibraryPath;
 #if PLATFORM_WINDOWS
-	LibraryPath = FPaths::Combine(*BaseDir, TEXT("Binaries/ThirdParty/Win64/TcAdsDll.dll"));
+//	LibraryPath = FPaths::Combine(*BaseDir, TEXT("Binaries/ThirdParty/Win64/TcAdsDll.dll"));
+	LibraryPath = FPaths::Combine(*BaseDir, TEXT("Source/ThirdParty/TwinCatAdsApiLibrary/Bin/TcAdsDll.dll"));
 #endif // PLATFORM_WINDOWS
 
 	// ExampleLibraryHandle = !LibraryPath.IsEmpty() ? FPlatformProcess::GetDllHandle(*LibraryPath) : nullptr;
 	if (LibraryPath.IsEmpty())
 	{
-		ExampleLibraryHandle = nullptr;
+		TcAdsDllLibraryHandle = nullptr;
 		FMessageDialog::Open(EAppMsgType::Ok, LOCTEXT("AdsLibrary", "TwinCAT ADS library path is not valid"));
 	}
 	else
 	{
-		ExampleLibraryHandle = FPlatformProcess::GetDllHandle(*LibraryPath);
+		TcAdsDllLibraryHandle = FPlatformProcess::GetDllHandle(*LibraryPath);
 	}
 
-	if (ExampleLibraryHandle)
+	if (TcAdsDllLibraryHandle)
 	{
 		// Call the test function in the third party library that opens a message box
 		AdsVersion Ver;
@@ -57,8 +58,8 @@ void FTwinCatAdsApiModule::ShutdownModule()
 	// we call this function before unloading the module.
 
 	// Free the dll handle
-	FPlatformProcess::FreeDllHandle(ExampleLibraryHandle);
-	ExampleLibraryHandle = nullptr;
+	FPlatformProcess::FreeDllHandle(TcAdsDllLibraryHandle);
+	TcAdsDllLibraryHandle = nullptr;
 }
 
 #undef LOCTEXT_NAMESPACE
