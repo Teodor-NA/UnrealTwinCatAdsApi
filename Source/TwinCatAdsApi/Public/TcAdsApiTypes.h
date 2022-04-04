@@ -2,8 +2,8 @@
 #pragma once
 
 // Needed for USTRUCT()
-#include "CoreMinimal.h"
-#include "TcAdsApiTypes.generated.h"
+// #include "CoreMinimal.h"
+// #include "TcAdsApiTypes.generated.h"
 
 // Forward declarations
 // class UTcAdsModule;
@@ -195,36 +195,36 @@ public:
 	explicit FSimpleAsciiString(const FString& Src) : FSimpleAsciiString(StringCast<ANSICHAR>(*Src).Get()) {}
 };
 
-USTRUCT()
-struct FSubscriberInputData
-{
-	GENERATED_BODY()
-
-	FSubscriberInputData() : Name(""), Value(0), DataType(EAdsDataTypeId::ADST_VOID), Size(0), Error(0), Valid(false),
-							 IndexGroup(0), IndexOffset(0) //, NewVar(true)
-	{
-	};
-	
-	UPROPERTY(EditAnywhere, Category = "Variable")
-	FString Name;
-
-	UPROPERTY(VisibleAnywhere, Category = "Variable")
-	float Value;
-	
-	UPROPERTY(VisibleAnywhere, Category = "Variable")
-	EAdsDataTypeId DataType;
-
-	UPROPERTY(VisibleAnywhere, Category = "Variable")
-	uint32 Size;
-	
-	UPROPERTY(VisibleAnywhere, Category = "Variable")
-	uint32 Error;
-
-	UPROPERTY(VisibleAnywhere, Category = "Variable")
-	bool Valid;
-	
-	uint32 IndexGroup;
-	uint32 IndexOffset;
-	// bool NewVar;
-		
-};
+// USTRUCT()
+// struct FSubscriberInputData
+// {
+// 	GENERATED_BODY()
+//
+// 	FSubscriberInputData() : Name(""), Value(0), DataType(EAdsDataTypeId::ADST_VOID), Size(0), Error(0), Valid(false),
+// 							 IndexGroup(0), IndexOffset(0) //, NewVar(true)
+// 	{
+// 	};
+// 	
+// 	UPROPERTY(EditAnywhere, Category = "Variable")
+// 	FString Name;
+//
+// 	UPROPERTY(VisibleAnywhere, Category = "Variable")
+// 	float Value;
+// 	
+// 	UPROPERTY(VisibleAnywhere, Category = "Variable")
+// 	EAdsDataTypeId DataType;
+//
+// 	UPROPERTY(VisibleAnywhere, Category = "Variable")
+// 	uint32 Size;
+// 	
+// 	UPROPERTY(VisibleAnywhere, Category = "Variable")
+// 	uint32 Error;
+//
+// 	UPROPERTY(VisibleAnywhere, Category = "Variable")
+// 	bool Valid;
+// 	
+// 	uint32 IndexGroup;
+// 	uint32 IndexOffset;
+// 	// bool NewVar;
+// 		
+// };

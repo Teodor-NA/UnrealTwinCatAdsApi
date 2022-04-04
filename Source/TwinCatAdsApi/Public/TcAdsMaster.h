@@ -6,7 +6,7 @@
 #include "GameFramework/Actor.h"
 #include "ThirdParty/TwinCatAdsApiLibrary/Include/TcAdsDef.h"
 #include "TcAdsApiTypes.h"
-// #include "TcAdsModule.h"
+#include "TcAdsVariable.h"
 #include "TcAdsMaster.generated.h"
 
 UCLASS()
@@ -18,24 +18,27 @@ public:
 	// Sets default values for this actor's properties
 	ATcAdsMaster();
 	
-	static size_t UnpackAdsValues(const char* BufferPos, FSubscriberInputData& Out);
+	// static size_t UnpackAdsValues(const char* BufferPos, FSubscriberInputData& Out);
 
-	// Timer delegates
-	void UpdateValues();
-	void UpdateVars();
+	void ReadValues();
+	void WriteValues();
+	void GetSymbolEntriesFromAds();
 
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
-
+	
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
+	// virtual void OnConstruction(const FTransform& Transform) override;
+	
 	AmsAddr TargetAmsAddress_;
-	FTimerHandle GetDataTimerHandle_;
-	// FTimerHandle CheckVarsTimerHandle_;
+	FTimerHandle ReadValuesTimerHandle_;
+	FTimerHandle WriteValuesTimerHandle_;
+	FTimerHandle SymbolEntriesTimerHandle_;
 
-	TSimpleBuffer<FDataPar> ReqBuffer_;
-	TSimpleBuffer<char> ReceiveBuffer_;
+	// TSimpleBuffer<FDataPar> ReqBuffer_;
+	// TSimpleBuffer<char> ReceiveBuffer_;
 	// unsigned long ValidVariableCount_;
 	
 public:	
@@ -49,15 +52,22 @@ public:
 	int32 AdsPort;
 
 	UFUNCTION(BlueprintCallable)
-	float GetReadVariable(int Index) const;
+	void AddReadVariable(UTcAdsVariable* Variable);
 	UFUNCTION(BlueprintCallable)
-	void SetWriteVariable(int Index, float Val);
+	void AddWriteVariable(UTcAdsVariable* Variable);
+	
+	// UFUNCTION(BlueprintCallable)
+	// float GetReadVariable(int Index) const;
+	// UFUNCTION(BlueprintCallable)
+	// void SetWriteVariable(int Index, float Val);
 	
 	/*!
 	 * Intervals between calls to the plc to refresh data [s]
 	 */
 	UPROPERTY(EditAnywhere, Category = "Time")
-	float GetDataInterval;
+	float ReadValuesInterval;
+	UPROPERTY(EditAnywhere, Category = "Time")
+	float WriteValuesInterval;
 	/*!
 	 * Intervals between when to check for new variables [s]
 	 */
@@ -69,9 +79,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Target")
 	int32 TargetAmsPort;
 	
-	UPROPERTY(EditAnywhere, Category = "Subscribed Variables")
-	TArray<FSubscriberInputData> ReadVariableList;
-	UPROPERTY(EditAnywhere, Category = "Subscribed Variables")
-	TArray<FSubscriberInputData> WriteVariableList;
+	UPROPERTY(VisibleAnywhere, Category = "Subscribed Variables")
+	TArray<UTcAdsVariable*> ReadVariableList;
+	UPROPERTY(VisibleAnywhere, Category = "Subscribed Variables")
+	TArray<UTcAdsVariable*> WriteVariableList;
 
 };
