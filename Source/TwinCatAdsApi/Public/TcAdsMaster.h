@@ -6,7 +6,7 @@
 #include "GameFramework/Actor.h"
 #include "ThirdParty/TwinCatAdsApiLibrary/Include/TcAdsDef.h"
 #include "TcAdsApiTypes.h"
-#include "TcAdsVariable.h"
+// #include "TcAdsVariable.h"
 #include "TcAdsMaster.generated.h"
 
 UCLASS()
@@ -22,7 +22,7 @@ public:
 
 	void ReadValues();
 	void WriteValues();
-	void GetSymbolEntriesFromAds();
+//	void GetSymbolEntriesFromAds();
 
 protected:
 	// Called when the game starts or when spawned
@@ -35,11 +35,18 @@ protected:
 	AmsAddr TargetAmsAddress_;
 	FTimerHandle ReadValuesTimerHandle_;
 	FTimerHandle WriteValuesTimerHandle_;
-	FTimerHandle SymbolEntriesTimerHandle_;
+	// FTimerHandle SymbolEntriesTimerHandle_;
 
+
+	TArray<FDataPar> ReadReqBuffer_;
+	size_t ReadBufferSize_;
+	TArray<FDataPar> WriteReqBuffer_;
+	size_t WriteBufferSize_;
 	// TSimpleBuffer<FDataPar> ReqBuffer_;
 	// TSimpleBuffer<char> ReceiveBuffer_;
 	// unsigned long ValidVariableCount_;
+
+	void CheckForNewVars(TArray<UTcAdsVariable*>& Vars, TArray<FDataPar>& ReqBuffer, size_t& BufferSize, EAdsAccessType Acess);
 	
 public:	
 	// Called every frame

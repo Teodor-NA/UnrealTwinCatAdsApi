@@ -6,8 +6,8 @@
 // #include "TcAdsApiTypes.generated.h"
 
 // Forward declarations
-// class UTcAdsModule;
-// class ATcAdsMaster;
+class UTcAdsVariable;
+class ATcAdsMaster;
 
 // Making the type enum explicitly since including wtypes.h seems to break Unreal
 
@@ -106,6 +106,14 @@ enum class EAdsDataTypeId : uint32
 	ADST_BIT = 33,
 	ADST_BIGTYPE = 65,
 	ADST_MAXTYPES = 67
+};
+
+UENUM(BlueprintType)
+enum class EAdsAccessType : uint8
+{
+	None = 0 UMETA(DisplayName = "None"),
+	Read  UMETA(DisplayName = "Read"),
+	Write  UMETA(DisplayName = "Write"),
 };
 
 // Struct for getting data from ADS using ADSIGRP_SUMUP_READ or ADSIGRP_SUMUP_WRITE

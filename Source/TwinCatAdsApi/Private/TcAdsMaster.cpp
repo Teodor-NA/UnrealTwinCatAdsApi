@@ -2,18 +2,22 @@
 
 
 #include "TcAdsMaster.h"
+#include "TcAdsVariable.h"
 #include "ThirdParty/TwinCatAdsApiLibrary/Include/TcAdsAPI.h"
 
 // Sets default values
-ATcAdsMaster::ATcAdsMaster() : ReadValuesInterval(0.1), WriteValuesInterval(0.1), TargetAmsNetId({127, 0, 0, 1, 1, 1}), TargetAmsPort(851)
+ATcAdsMaster::ATcAdsMaster() :
+	ReadBufferSize_(0),
+	ReadValuesInterval(0.1),
+	WriteValuesInterval(0.1),
+	TargetAmsNetId({127, 0, 0, 1, 1, 1}),
+	TargetAmsPort(851)
 {
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = false;
 	
 	if (GEngine)
 		GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Green,TEXT("Ads master loaded"));
-
-	UE_LOG(LogTemp, Display, TEXT("Ads master loaded") );
 
 }
 
@@ -23,8 +27,9 @@ void ATcAdsMaster::BeginPlay()
 	Super::BeginPlay();
 	
 	GetWorldTimerManager().SetTimer(ReadValuesTimerHandle_,this, &ATcAdsMaster::ReadValues, ReadValuesInterval, true);
-	// Delay getting symbol entries from ads by 100ms so that we are sure that all the variables have had time to load
-	GetWorldTimerManager().SetTimer(SymbolEntriesTimerHandle_,this, &ATcAdsMaster::GetSymbolEntriesFromAds, 0.1, false);
+	GetWorldTimerManager().SetTimer(WriteValuesTimerHandle_,this, &ATcAdsMaster::WriteValues, WriteValuesInterval, true);
+	// // Delay getting symbol entries from ads by 100ms so that we are sure that all the variables have had time to load
+	// GetWorldTimerManager().SetTimer(SymbolEntriesTimerHandle_,this, &ATcAdsMaster::GetSymbolEntriesFromAds, 0.1, false);
 	
 	TargetAmsAddress_.port = TargetAmsPort;
 	memcpy_s(TargetAmsAddress_.netId.b, 6, TargetAmsNetId.GetData(), 6);
@@ -68,7 +73,8 @@ void ATcAdsMaster::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 	// Stop timers
 	GetWorldTimerManager().ClearTimer(ReadValuesTimerHandle_);
-	GetWorldTimerManager().ClearTimer(SymbolEntriesTimerHandle_);
+	GetWorldTimerManager().ClearTimer(WriteValuesTimerHandle_);
+	// GetWorldTimerManager().ClearTimer(SymbolEntriesTimerHandle_);
 
 	/// Seems like we don't need to release handles, since we are actually using the index group and offset to access
 	/// variables, and therefore handles are not created for us. Might be wrong though, the documentation isn't exactly
@@ -99,6 +105,7 @@ void ATcAdsMaster::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 	ReadVariableList.Empty();
 	WriteVariableList.Empty();
+	ReadReqBuffer_.Empty();
 	
 	if (AdsPort)
 	{
@@ -115,6 +122,63 @@ void ATcAdsMaster::EndPlay(const EEndPlayReason::Type EndPlayReason)
 // 	ReadVariableList.Empty();
 // 	WriteVariableList.Empty();
 // }
+
+void ATcAdsMaster::CheckForNewVars(TArray<UTcAdsVariable*>& Vars, TArray<FDataPar>& ReqBuffer, size_t& BufferSize, EAdsAccessType Access)
+{
+	// Check for new variables in the list. Since new variables are always added at the end, we check in reverse
+	// (so that normally we will check the first entry and immediately step out).
+	bool NewVar = false;
+	int32 NewIndex = 0;
+	for (auto i = Vars.Num(); i--;)
+	{
+		if (Vars[i]->NewVar())
+		{
+			NewVar = true;
+			NewIndex = i;
+		}
+		else
+			break;
+	}
+
+	// Nothing to do
+	if (!NewVar)
+		return;
+
+	// If there are any new variables then we must ask ADS for them in forward order, so that the
+	// arrays xxxVariableList and xxxReqBuffer_ are synchronized
+	for (auto i = NewIndex; i < Vars.Num(); ++i)
+	{
+		auto Err = Vars[i]->GetSymbolEntryFromAds(AdsPort, TargetAmsAddress_, ReqBuffer);
+		if (!Err)
+		{
+			switch (Access) {
+			case EAdsAccessType::Read:
+				// For read vars we need the size of the variable plus the size of the error code for each variable
+				BufferSize += Vars[i]->Size() + sizeof(uint32);
+				break;
+			case EAdsAccessType::Write:
+				// For write vars we need the size of the variable plus the size of the request data
+				BufferSize += Vars[i]->Size() + sizeof(FDataPar);
+				break;
+			default: ;
+			}
+		}
+		
+		if (GEngine)
+		{
+			if (Err)
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Yellow,
+					FString::Printf(TEXT("Failed to subscribe to variable '%s'. Error code %x"), *Vars[i]->Name, Err));
+			}
+			else
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Green,
+					FString::Printf(TEXT("Successfully subscribed to variable '%s'"), *Vars[i]->Name));
+			}
+		}
+	}
+}
 
 // Called every frame
 void ATcAdsMaster::Tick(float DeltaTime)
@@ -158,64 +222,104 @@ void ATcAdsMaster::AddWriteVariable(UTcAdsVariable* Variable)
 
 void ATcAdsMaster::ReadValues()
 {
-	// Find out how many variables we should order and the total size buffer we need
-	uint32 VariableCount = 0;
-	size_t BufferSize = 0;
-	for (auto AdsVar : ReadVariableList)
-	{
-		if (AdsVar->Valid)
-		{
-			++VariableCount;
-			BufferSize += AdsVar->Size() + sizeof(uint32);
-		}
-	}
+	CheckForNewVars(ReadVariableList, ReadReqBuffer_, ReadBufferSize_, EAdsAccessType::Read);
 
-	// No point in doing this if the list of valid vars is empty
-	if (VariableCount == 0)
+	// Nothing to do
+	if (ReadReqBuffer_.Num() == 0)
 		return;
 	
-	// Make request buffer
-	TSimpleBuffer<FDataPar> ReqBuffer(VariableCount);
-	// Make receive buffer
-	TSimpleBuffer<char> ReceiveBuffer(BufferSize);
-
-	FDataPar* pReqBuffer = ReqBuffer.GetData();
-	// Copy request info from each variable
-	for (auto AdsVar : ReadVariableList)
-	{
-		if (AdsVar->Valid)
-		{
-			AdsVar->SetExternalRequestData(*pReqBuffer);
-			++pReqBuffer;
-		}
-	}
-
+	TSimpleBuffer<char> ReadBuffer(ReadBufferSize_);
+	
 	// Get data from ADS
 	unsigned long BytesRead;
 	long Err = AdsSyncReadWriteReqEx2(
 		AdsPort,
 		&TargetAmsAddress_,
 		ADSIGRP_SUMUP_READ,
-		ReqBuffer.Count(),
-		ReceiveBuffer.ByteSize(),
-		ReceiveBuffer.GetData(),
-		ReqBuffer.ByteSize(),
-		ReqBuffer.GetData(),
+		ReadReqBuffer_.Num(),
+		ReadBuffer.ByteSize(),
+		ReadBuffer.GetData(),
+		ReadReqBuffer_.Num()*sizeof(FDataPar),
+		ReadReqBuffer_.GetData(),
 		&BytesRead
 	);
 
+	if (Err && GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(1, 5, FColor::Red,
+		   FString::Printf(TEXT("Failed to get data from ADS, error code 0x%x"), Err));
+	}
+
 	// Unpack data
-	char* pErrorPos = ReceiveBuffer.GetData();
-	char* pValuePos = pErrorPos + ReqBuffer.Count()*sizeof(uint32);
+	char* pErrorPos = ReadBuffer.GetData();
+	char* pValuePos = pErrorPos + ReadReqBuffer_.Num()*sizeof(uint32);
 	for (auto AdsVar : ReadVariableList)
 	{
 		if (AdsVar->Valid)
 		{
-			pValuePos += AdsVar->UnpackValues(pErrorPos, pValuePos);
+			pValuePos += AdsVar->UnpackValues(pErrorPos, pValuePos, Err);
 			pErrorPos += sizeof(uint32);
 		}
 	}
 	
+	// // Find out how many variables we should order and the total size buffer we need
+	// uint32 VariableCount = 0;
+	// size_t BufferSize = 0;
+	// for (auto AdsVar : ReadVariableList)
+	// {
+	// 	if (AdsVar->Valid)
+	// 	{
+	// 		++VariableCount;
+	// 		BufferSize += AdsVar->Size() + sizeof(uint32);
+	// 	}
+	// }
+	//
+	// // No point in doing this if the list of valid vars is empty
+	// if (VariableCount == 0)
+	// 	return;
+	//
+	// // Make request buffer
+	// TSimpleBuffer<FDataPar> ReqBuffer(VariableCount);
+	// // Make receive buffer
+	// TSimpleBuffer<char> ReceiveBuffer(BufferSize);
+	//
+	// FDataPar* pReqBuffer = ReqBuffer.GetData();
+	// // Copy request info from each variable
+	// for (auto AdsVar : ReadVariableList)
+	// {
+	// 	if (AdsVar->Valid)
+	// 	{
+	// 		AdsVar->SetExternalRequestData(*pReqBuffer);
+	// 		++pReqBuffer;
+	// 	}
+	// }
+	//
+	// // Get data from ADS
+	// unsigned long BytesRead;
+	// long Err = AdsSyncReadWriteReqEx2(
+	// 	AdsPort,
+	// 	&TargetAmsAddress_,
+	// 	ADSIGRP_SUMUP_READ,
+	// 	ReqBuffer.Count(),
+	// 	ReceiveBuffer.ByteSize(),
+	// 	ReceiveBuffer.GetData(),
+	// 	ReqBuffer.ByteSize(),
+	// 	ReqBuffer.GetData(),
+	// 	&BytesRead
+	// );
+	//
+	// // Unpack data
+	// char* pErrorPos = ReceiveBuffer.GetData();
+	// char* pValuePos = pErrorPos + ReqBuffer.Count()*sizeof(uint32);
+	// for (auto AdsVar : ReadVariableList)
+	// {
+	// 	if (AdsVar->Valid)
+	// 	{
+	// 		pValuePos += AdsVar->UnpackValues(pErrorPos, pValuePos);
+	// 		pErrorPos += sizeof(uint32);
+	// 	}
+	// }
+	//
 	// if (ReqBuffer_.Count() == 0)
 	// 	return;
 	//
@@ -259,102 +363,158 @@ void ATcAdsMaster::ReadValues()
 
 void ATcAdsMaster::WriteValues()
 {
-}
+	CheckForNewVars(WriteVariableList, WriteReqBuffer_, WriteBufferSize_, EAdsAccessType::Write);
 
-void ATcAdsMaster::GetSymbolEntriesFromAds()
-{
-	for (auto Var : ReadVariableList)
+	// Nothing to do
+	if (WriteReqBuffer_.Num() == 0)
+		return;
+
+	size_t ReqSize = WriteReqBuffer_.Num()*sizeof(FDataPar);
+	
+	TSimpleBuffer<char> WriteBuffer(WriteBufferSize_);
+	// Copy data from Write request buffer
+	memcpy_s(WriteBuffer.GetData(), WriteBuffer.ByteSize(), WriteReqBuffer_.GetData(), ReqSize);
+
+	char* BufferPos = WriteBuffer.GetData() + ReqSize;
+	
+	// Get data from variables
+	for (auto Var : WriteVariableList)
 	{
-		if (!Var)
-			continue;
-		
-		auto Err = Var->GetSymbolEntryFromAds(AdsPort, TargetAmsAddress_);
-
-		if (Err)
+		if (Var->Valid)
 		{
-			if (GEngine)
-				GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Yellow,
-					FString::Printf(TEXT("Failed to subscribe to variable '%s'. Error code 0x%x"), *Var->Name, Err));
-			
-			// UE_LOG(LogTemp, Warning, TEXT("Failed to subscribe to variable '%s'. Error code %x"), *Var->Name, Err);
-		}
-		else
-		{
-			if (GEngine)
-				GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Green,
-					FString::Printf(TEXT("Successfully subscribed to variable '%s'"), *Var->Name));
-
-			// UE_LOG(LogTemp, Display, TEXT("Successfully subscribed to variable '%s'"), *Var->Name);
+			BufferPos += Var->PackValues(BufferPos);
 		}
 	}
+
+	// Make a buffer for the ADS return codes
+	TSimpleBuffer<uint32> ErrorBuffer(WriteReqBuffer_.Num());
 	
-	// size_t BufferSize = 0;
-	// size_t ValidVariableCount = 0;
-	//
-	// for (auto& Var : ReadVariableList)
-	// {
-	// 	// Get variable info from PLC
-	//
-	// 	// Get name
-	// 	FSimpleAsciiString VarName(Var.Name);
-	// 	
-	// 	unsigned long BytesRead;
-	// 	AdsSymbolEntry SymbolEntry;
-	// 	long Err = AdsSyncReadWriteReqEx2(
-	// 		AdsPort,
-	// 		&TargetAmsAddress_,
-	// 		ADSIGRP_SYM_INFOBYNAMEEX,
-	// 		0,
-	// 		sizeof(SymbolEntry),
-	// 		&SymbolEntry,
-	// 		VarName.ByteSize(),
-	// 		VarName.GetData(),
-	// 		&BytesRead
-	// 	);
-	//
-	// 	if (Err)
-	// 	{
-	// 		if (GEngine)
-	// 			GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Red, FString::Printf(TEXT("Could not add variable: '%s', error code %d"), *Var.Name, Err));
-	// 	}
-	// 	else
-	// 	{
-	// 		Var.Size = SymbolEntry.size;
-	// 		Var.DataType = static_cast<EAdsDataTypeId>(SymbolEntry.dataType);
-	// 		Var.Valid = true;
-	// 		Var.IndexGroup = SymbolEntry.iGroup;
-	// 		Var.IndexOffset = SymbolEntry.iOffs;
-	// 		BufferSize += Var.Size + 4; // Additional error code (long) for each variable
-	// 		++ValidVariableCount;
-	// 	}
-	// 		
-	// 	// }
-	// }
-	//
-	// if (BufferSize != 0)
-	// {
-	// 	ReceiveBuffer_.Reserve(BufferSize);
-	// }
-	//
-	// if (ValidVariableCount == 0)
-	// 	return;
-	//
-	// ReqBuffer_.Reserve(ValidVariableCount);
-	// FDataPar* ReqBufferData = ReqBuffer_.GetData();
-	//
-	// size_t i = 0;
-	// for (const auto& Var : ReadVariableList)
-	// {
-	// 	if (!Var.Valid)
-	// 		continue;
-	//
-	// 	ReqBufferData[i].IndexGroup = Var.IndexGroup;
-	// 	ReqBufferData[i].IndexOffset = Var.IndexOffset;
-	// 	ReqBufferData[i].Length = Var.Size;
-	//
-	// 	++i;
-	// }
+	// Get data from ADS
+	unsigned long BytesRead;
+	long Err = AdsSyncReadWriteReqEx2(
+		AdsPort,
+		&TargetAmsAddress_,
+		ADSIGRP_SUMUP_WRITE,
+		WriteReqBuffer_.Num(),
+		ErrorBuffer.ByteSize(),
+		ErrorBuffer.GetData(),
+		WriteBuffer.ByteSize(),
+		WriteBuffer.GetData(),
+		&BytesRead
+	);
+
+	if (Err && GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(2, 5, FColor::Red,
+		   FString::Printf(TEXT("Failed to write data to ADS, error code 0x%x"), Err));
+	}
+
+	// Unpack errors
+	uint32* pErrorPos = ErrorBuffer.GetData();
+	for (auto AdsVar : WriteVariableList)
+	{
+		if (AdsVar->Valid)
+		{
+			AdsVar->Error = *pErrorPos;
+			++pErrorPos;
+		}
+	}
 }
+
+// void ATcAdsMaster::GetSymbolEntriesFromAds()
+// {
+// 	for (auto Var : ReadVariableList)
+// 	{
+// 		if (!Var)
+// 			continue;
+// 		
+// 		auto Err = Var->GetSymbolEntryFromAds(AdsPort, TargetAmsAddress_);
+//
+// 		if (Err)
+// 		{
+// 			if (GEngine)
+// 				GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Yellow,
+// 					FString::Printf(TEXT("Failed to subscribe to variable '%s'. Error code 0x%x"), *Var->Name, Err));
+// 			
+// 			// UE_LOG(LogTemp, Warning, TEXT("Failed to subscribe to variable '%s'. Error code %x"), *Var->Name, Err);
+// 		}
+// 		else
+// 		{
+// 			if (GEngine)
+// 				GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Green,
+// 					FString::Printf(TEXT("Successfully subscribed to variable '%s'"), *Var->Name));
+//
+// 			// UE_LOG(LogTemp, Display, TEXT("Successfully subscribed to variable '%s'"), *Var->Name);
+// 		}
+// 	}
+// 	
+// 	// size_t BufferSize = 0;
+// 	// size_t ValidVariableCount = 0;
+// 	//
+// 	// for (auto& Var : ReadVariableList)
+// 	// {
+// 	// 	// Get variable info from PLC
+// 	//
+// 	// 	// Get name
+// 	// 	FSimpleAsciiString VarName(Var.Name);
+// 	// 	
+// 	// 	unsigned long BytesRead;
+// 	// 	AdsSymbolEntry SymbolEntry;
+// 	// 	long Err = AdsSyncReadWriteReqEx2(
+// 	// 		AdsPort,
+// 	// 		&TargetAmsAddress_,
+// 	// 		ADSIGRP_SYM_INFOBYNAMEEX,
+// 	// 		0,
+// 	// 		sizeof(SymbolEntry),
+// 	// 		&SymbolEntry,
+// 	// 		VarName.ByteSize(),
+// 	// 		VarName.GetData(),
+// 	// 		&BytesRead
+// 	// 	);
+// 	//
+// 	// 	if (Err)
+// 	// 	{
+// 	// 		if (GEngine)
+// 	// 			GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Red, FString::Printf(TEXT("Could not add variable: '%s', error code %d"), *Var.Name, Err));
+// 	// 	}
+// 	// 	else
+// 	// 	{
+// 	// 		Var.Size = SymbolEntry.size;
+// 	// 		Var.DataType = static_cast<EAdsDataTypeId>(SymbolEntry.dataType);
+// 	// 		Var.Valid = true;
+// 	// 		Var.IndexGroup = SymbolEntry.iGroup;
+// 	// 		Var.IndexOffset = SymbolEntry.iOffs;
+// 	// 		BufferSize += Var.Size + 4; // Additional error code (long) for each variable
+// 	// 		++ValidVariableCount;
+// 	// 	}
+// 	// 		
+// 	// 	// }
+// 	// }
+// 	//
+// 	// if (BufferSize != 0)
+// 	// {
+// 	// 	ReceiveBuffer_.Reserve(BufferSize);
+// 	// }
+// 	//
+// 	// if (ValidVariableCount == 0)
+// 	// 	return;
+// 	//
+// 	// ReqBuffer_.Reserve(ValidVariableCount);
+// 	// FDataPar* ReqBufferData = ReqBuffer_.GetData();
+// 	//
+// 	// size_t i = 0;
+// 	// for (const auto& Var : ReadVariableList)
+// 	// {
+// 	// 	if (!Var.Valid)
+// 	// 		continue;
+// 	//
+// 	// 	ReqBufferData[i].IndexGroup = Var.IndexGroup;
+// 	// 	ReqBufferData[i].IndexOffset = Var.IndexOffset;
+// 	// 	ReqBufferData[i].Length = Var.Size;
+// 	//
+// 	// 	++i;
+// 	// }
+// }
 
 // void ATcAdsMaster::AddModule(UTcAdsModule* AdsModule)
 // {

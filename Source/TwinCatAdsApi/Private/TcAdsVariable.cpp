@@ -3,14 +3,20 @@
 
 #include "TcAdsVariable.h"
 
+#include "TcAdsMaster.h"
 #include "ThirdParty/TwinCatAdsApiLibrary/Include/TcAdsAPI.h"
 
 UTcAdsVariable::UTcAdsVariable() :
 	Name(TEXT("")),
+	Access(EAdsAccessType::None),
 	Value(0.0f),
 	Error(0),
 	Valid(false),
-	SymbolEntry_({0, 0, 0, 0, 0, 0, 0, 0, 0})
+	AdsMaster(nullptr),
+	DataType_(EAdsDataTypeId::ADST_VOID),
+	Size_(0),
+	NewVar_(true)
+	// SymbolEntry_({0, 0, 0, 0, 0, 0, 0, 0, 0})
 	// DataPar_({0,0,0})
 {
 	PrimaryComponentTick.bCanEverTick = false;
@@ -19,6 +25,24 @@ UTcAdsVariable::UTcAdsVariable() :
 void UTcAdsVariable::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// Insert ourselves in the list of variables
+	if (AdsMaster)
+	{
+		switch (Access)
+		{
+		// case EAdsAccessType::None:
+		// 	break;
+		case EAdsAccessType::Read:
+			AdsMaster->AddReadVariable(this);
+			break;
+		case EAdsAccessType::Write:
+			AdsMaster->AddWriteVariable(this);
+			break;
+		default:
+			break;
+		}
+	}
 }
 
 void UTcAdsVariable::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -26,36 +50,51 @@ void UTcAdsVariable::TickComponent(float DeltaTime, ELevelTick TickType, FActorC
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 }
 
-uint32 UTcAdsVariable::GetSymbolEntryFromAds(int32 AdsPort, AmsAddr& AmsAddress)
+uint32 UTcAdsVariable::GetSymbolEntryFromAds(int32 AdsPort, AmsAddr& AmsAddress, TArray<FDataPar>& Out)
 {
 	FSimpleAsciiString VarName(Name);
 	unsigned long BytesRead;
+	AdsSymbolEntry SymbolEntry;
 	
 	Error = AdsSyncReadWriteReqEx2(
 		AdsPort,
 		&AmsAddress,
 		ADSIGRP_SYM_INFOBYNAMEEX,
 		0,
-		sizeof(SymbolEntry_),
-		&SymbolEntry_,
+		sizeof(SymbolEntry),
+		&SymbolEntry,
 		VarName.ByteSize(),
 		VarName.GetData(),
 		&BytesRead
 	);
-
-	if (!Error)
-		Valid = true;
 	
+	if (!Error)
+	{
+		Valid = true;
+		Size_ = SymbolEntry.size;
+		DataType_ = static_cast<EAdsDataTypeId>(SymbolEntry.dataType);
+		Out.Emplace(*reinterpret_cast<FDataPar*>(&SymbolEntry.iGroup));
+	}
+
+	NewVar_ = false;
 	return Error;
 }
 
-size_t UTcAdsVariable::UnpackValues(const char* ErrorSrc, const char* ValueSrc)
+size_t UTcAdsVariable::UnpackValues(const char* ErrorSrc, const char* ValueSrc, uint32 ErrorIn)
 {
-	Error = *reinterpret_cast<const uint32*>(ErrorSrc);
-	
-	switch (GetDataType())
+	if (ErrorIn)
 	{
-		// case EAdsDataTypeId::ADST_VOID:
+		Error = ErrorIn;
+		return Size_;
+	}
+	else
+	{
+		Error = *reinterpret_cast<const uint32*>(ErrorSrc);
+	}
+	
+	switch (DataType_)
+	{
+		// case EAdsDataTypeId::ADST_VOID: // Invalid
 		case EAdsDataTypeId::ADST_INT8:
 			Value = *reinterpret_cast<const int8*>(ValueSrc);
 		break;
@@ -96,5 +135,53 @@ size_t UTcAdsVariable::UnpackValues(const char* ErrorSrc, const char* ValueSrc)
 			break;
 	}
 	
-	return Size();
+	return Size_;
+}
+
+size_t UTcAdsVariable::PackValues(char* ValueDst) const
+{
+	switch (DataType_)
+	{
+		// case EAdsDataTypeId::ADST_VOID: // Invalid
+	case EAdsDataTypeId::ADST_INT8:
+		*reinterpret_cast<int8*>(ValueDst) = static_cast<int8>(Value);
+		break;
+	case EAdsDataTypeId::ADST_UINT8:
+		*reinterpret_cast<uint8*>(ValueDst) = static_cast<uint8>(Value);
+		break;
+	case EAdsDataTypeId::ADST_INT16:
+		*reinterpret_cast<int16*>(ValueDst) = static_cast<int16>(Value);
+		break;
+	case EAdsDataTypeId::ADST_UINT16:
+		*reinterpret_cast<uint16*>(ValueDst) = static_cast<uint16>(Value);
+		break;
+	case EAdsDataTypeId::ADST_INT32:
+		*reinterpret_cast<int32*>(ValueDst) = static_cast<int32>(Value);
+		break;
+	case EAdsDataTypeId::ADST_UINT32:
+		*reinterpret_cast<uint32*>(ValueDst) = static_cast<uint32>(Value);
+		break;
+	case EAdsDataTypeId::ADST_INT64:
+		*reinterpret_cast<int64*>(ValueDst) = static_cast<int64>(Value);
+		break;
+	case EAdsDataTypeId::ADST_UINT64:
+		*reinterpret_cast<uint64*>(ValueDst) = static_cast<uint64>(Value);
+		break;
+	case EAdsDataTypeId::ADST_REAL32: 
+		*reinterpret_cast<float*>(ValueDst) = static_cast<float>(Value);
+		break;
+	case EAdsDataTypeId::ADST_REAL64:
+		*reinterpret_cast<double*>(ValueDst) = static_cast<double>(Value);
+		break;
+		// case EAdsDataTypeId::ADST_STRING:	// Not supported
+		// case EAdsDataTypeId::ADST_WSTRING:	// Not supported
+		// case EAdsDataTypeId::ADST_REAL80:	// Not supported
+		// case EAdsDataTypeId::ADST_BIT:		// Not supported
+		// case EAdsDataTypeId::ADST_BIGTYPE:	// Not supported
+		// case EAdsDataTypeId::ADST_MAXTYPES:	// Not supported
+		default:
+			break;
+	}
+	
+	return Size_;
 }
