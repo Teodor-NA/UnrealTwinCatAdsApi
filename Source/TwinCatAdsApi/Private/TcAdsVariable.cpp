@@ -7,7 +7,7 @@
 #include "ThirdParty/TwinCatAdsApiLibrary/Include/TcAdsAPI.h"
 
 UTcAdsVariable::UTcAdsVariable() :
-	Name(TEXT("")),
+	AdsName(TEXT("")),
 	Access(EAdsAccessType::None),
 	Value(0.0f),
 	Error(0),
@@ -45,6 +45,29 @@ void UTcAdsVariable::BeginPlay()
 	}
 }
 
+void UTcAdsVariable::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	Super::EndPlay(EndPlayReason);
+
+	// Remove ourselves from the list
+	if (AdsMaster)
+	{
+		switch (Access)
+		{
+		// case EAdsAccessType::None:
+		// 	break;
+		case EAdsAccessType::Read:
+			AdsMaster->RemoveReadVariable(this);
+			break;
+		case EAdsAccessType::Write:
+			AdsMaster->RemoveWriteVariable(this);
+			break;
+		default:
+			break;
+		}
+	}
+}
+
 void UTcAdsVariable::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
@@ -52,7 +75,10 @@ void UTcAdsVariable::TickComponent(float DeltaTime, ELevelTick TickType, FActorC
 
 uint32 UTcAdsVariable::GetSymbolEntryFromAds(int32 AdsPort, AmsAddr& AmsAddress, TArray<FDataPar>& Out)
 {
-	FSimpleAsciiString VarName(Name);
+	if (AdsName == TEXT(""))
+		return ADSERR_DEVICE_INVALIDPARM;
+	
+	FSimpleAsciiString VarName(AdsName);
 	unsigned long BytesRead;
 	AdsSymbolEntry SymbolEntry;
 	
@@ -91,39 +117,39 @@ size_t UTcAdsVariable::UnpackValues(const char* ErrorSrc, const char* ValueSrc, 
 	{
 		Error = *reinterpret_cast<const uint32*>(ErrorSrc);
 	}
-	
+
 	switch (DataType_)
 	{
 		// case EAdsDataTypeId::ADST_VOID: // Invalid
-		case EAdsDataTypeId::ADST_INT8:
-			Value = *reinterpret_cast<const int8*>(ValueSrc);
+	case EAdsDataTypeId::ADST_INT8:
+		CopyCast<float, int8>(&Value, ValueSrc);
 		break;
 	case EAdsDataTypeId::ADST_UINT8:
-		Value = *reinterpret_cast<const uint8*>(ValueSrc);
+		CopyCast<float, uint8>(&Value, ValueSrc);
 		break;
 	case EAdsDataTypeId::ADST_INT16:
-		Value = *reinterpret_cast<const int16*>(ValueSrc);
+		CopyCast<float, int16>(&Value, ValueSrc);
 		break;
 	case EAdsDataTypeId::ADST_UINT16:
-		Value = *reinterpret_cast<const uint16*>(ValueSrc);
+		CopyCast<float, uint16>(&Value, ValueSrc);
 		break;
 	case EAdsDataTypeId::ADST_INT32:
-		Value = *reinterpret_cast<const int32*>(ValueSrc);
+		CopyCast<float, int32>(&Value, ValueSrc);
 		break;
 	case EAdsDataTypeId::ADST_UINT32:
-		Value = *reinterpret_cast<const uint32*>(ValueSrc);
+		CopyCast<float, uint32>(&Value, ValueSrc);
 		break;
 	case EAdsDataTypeId::ADST_INT64:
-		Value = *reinterpret_cast<const int64*>(ValueSrc);
+		CopyCast<float, int64>(&Value, ValueSrc);
 		break;
 	case EAdsDataTypeId::ADST_UINT64:
-		Value = *reinterpret_cast<const uint64*>(ValueSrc);
+		CopyCast<float, uint64>(&Value, ValueSrc);
 		break;
 	case EAdsDataTypeId::ADST_REAL32: 
-		Value = *reinterpret_cast<const float*>(ValueSrc);
+		CopyCast<float, float>(&Value, ValueSrc);
 		break;
 	case EAdsDataTypeId::ADST_REAL64:
-		Value = *reinterpret_cast<const double*>(ValueSrc);
+		CopyCast<float, double>(&Value, ValueSrc);
 		break;
 		// case EAdsDataTypeId::ADST_STRING:	// Not supported
 		// case EAdsDataTypeId::ADST_WSTRING:	// Not supported
@@ -134,6 +160,49 @@ size_t UTcAdsVariable::UnpackValues(const char* ErrorSrc, const char* ValueSrc, 
 		default:
 			break;
 	}
+	
+	// switch (DataType_)
+	// {
+	// 	// case EAdsDataTypeId::ADST_VOID: // Invalid
+	// case EAdsDataTypeId::ADST_INT8:
+	// 	Value = *reinterpret_cast<const int8*>(ValueSrc);
+	// 	break;
+	// case EAdsDataTypeId::ADST_UINT8:
+	// 	Value = *reinterpret_cast<const uint8*>(ValueSrc);
+	// 	break;
+	// case EAdsDataTypeId::ADST_INT16:
+	// 	Value = *reinterpret_cast<const int16*>(ValueSrc);
+	// 	break;
+	// case EAdsDataTypeId::ADST_UINT16:
+	// 	Value = *reinterpret_cast<const uint16*>(ValueSrc);
+	// 	break;
+	// case EAdsDataTypeId::ADST_INT32:
+	// 	Value = *reinterpret_cast<const int32*>(ValueSrc);
+	// 	break;
+	// case EAdsDataTypeId::ADST_UINT32:
+	// 	Value = *reinterpret_cast<const uint32*>(ValueSrc);
+	// 	break;
+	// case EAdsDataTypeId::ADST_INT64:
+	// 	Value = *reinterpret_cast<const int64*>(ValueSrc);
+	// 	break;
+	// case EAdsDataTypeId::ADST_UINT64:
+	// 	Value = *reinterpret_cast<const uint64*>(ValueSrc);
+	// 	break;
+	// case EAdsDataTypeId::ADST_REAL32: 
+	// 	Value = *reinterpret_cast<const float*>(ValueSrc);
+	// 	break;
+	// case EAdsDataTypeId::ADST_REAL64:
+	// 	Value = *reinterpret_cast<const double*>(ValueSrc);
+	// 	break;
+	// 	// case EAdsDataTypeId::ADST_STRING:	// Not supported
+	// 	// case EAdsDataTypeId::ADST_WSTRING:	// Not supported
+	// 	// case EAdsDataTypeId::ADST_REAL80:	// Not supported
+	// 	// case EAdsDataTypeId::ADST_BIT:		// Not supported
+	// 	// case EAdsDataTypeId::ADST_BIGTYPE:	// Not supported
+	// 	// case EAdsDataTypeId::ADST_MAXTYPES:	// Not supported
+	// 	default:
+	// 		break;
+	// }
 	
 	return Size_;
 }

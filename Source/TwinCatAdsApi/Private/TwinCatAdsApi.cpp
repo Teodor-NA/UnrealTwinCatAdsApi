@@ -38,19 +38,19 @@ void FTwinCatAdsApiModule::StartupModule()
 		TcAdsDllLibraryHandle = FPlatformProcess::GetDllHandle(*LibraryPath);
 	}
 
-	if (TcAdsDllLibraryHandle)
-	{
-		// Call the test function in the third party library that opens a message box
-		AdsVersion Ver;
-		*reinterpret_cast<uint32*>(&Ver) = AdsGetDllVersion();
-
-		// FText Disp = FText::Format(LOCTEXT("AdsLibrary", "Loaded third party TwinCAT ADS library version: %ld"), Ver);
-
-		FText Disp = FText::FromString(FString::Printf(TEXT("Loaded third party TwinCAT ADS library version: %hhu.%hhu.%hu"), Ver.version, Ver.revision, Ver.build));
-		
-		FMessageDialog::Open(EAppMsgType::Ok, Disp);
-	}
-	else
+	// if (TcAdsDllLibraryHandle)
+	// {
+	// 	// Call the test function in the third party library that opens a message box
+	// 	// AdsVersion Ver;
+	// 	// *reinterpret_cast<uint32*>(&Ver) = AdsGetDllVersion();
+	// 	//
+	// 	// // FText Disp = FText::Format(LOCTEXT("AdsLibrary", "Loaded third party TwinCAT ADS library version: %ld"), Ver);
+	// 	//
+	// 	// FText Disp = FText::FromString(FString::Printf(TEXT("Loaded third party TwinCAT ADS library version: %hhu.%hhu.%hu"), Ver.version, Ver.revision, Ver.build));
+	// 	//
+	// 	// FMessageDialog::Open(EAppMsgType::Ok, Disp);
+	// }
+	if (!TcAdsDllLibraryHandle)
 	{
 		FMessageDialog::Open(EAppMsgType::Ok, LOCTEXT("AdsLibrary", "Failed to load third party TwinCAT ADS library"));
 	}

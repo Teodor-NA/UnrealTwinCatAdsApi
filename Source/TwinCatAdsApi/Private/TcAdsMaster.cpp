@@ -115,6 +115,46 @@ void ATcAdsMaster::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	
 }
 
+void ATcAdsMaster::RemoveVariable(const UTcAdsVariable* Variable, TArray<UTcAdsVariable*>& VarList,
+	TArray<FDataPar>& ReqList, size_t& BufferSize, EAdsAccessType Access)
+{
+	if (!Variable)
+		return;
+	if (!Variable->Valid)
+		return;
+
+	auto Idx = VarList.IndexOfByKey(Variable);
+	if (Idx == INDEX_NONE)
+	{
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Yellow,
+			   FString::Printf(TEXT("No variable '%s' found in list. No action taken"), *Variable->AdsName));
+		}
+	}
+	else
+	{
+		VarList.RemoveAt(Idx);
+		ReqList.RemoveAt(Idx);
+		switch (Access) {
+		case EAdsAccessType::Read:
+			// For read vars we need the size of the variable plus the size of the error code for each variable
+			BufferSize -= (Variable->Size() + sizeof(uint32));
+			break;
+		case EAdsAccessType::Write:
+			// For write vars we need the size of the variable plus the size of the request data
+			BufferSize -= (Variable->Size() + sizeof(FDataPar));
+			break;
+		default: ;
+		}
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Green,
+			   FString::Printf(TEXT("Unsubscribed variable '%s'"), *Variable->AdsName));
+		}
+	}
+}
+
 // void ATcAdsMaster::OnConstruction(const FTransform& Transform)
 // {
 // 	Super::OnConstruction(Transform);
@@ -169,12 +209,12 @@ void ATcAdsMaster::CheckForNewVars(TArray<UTcAdsVariable*>& Vars, TArray<FDataPa
 			if (Err)
 			{
 				GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Yellow,
-					FString::Printf(TEXT("Failed to subscribe to variable '%s'. Error code %x"), *Vars[i]->Name, Err));
+					FString::Printf(TEXT("Failed to subscribe to variable '%s'. Error code 0x%x"), *Vars[i]->AdsName, Err));
 			}
 			else
 			{
 				GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Green,
-					FString::Printf(TEXT("Successfully subscribed to variable '%s'"), *Vars[i]->Name));
+					FString::Printf(TEXT("Successfully subscribed to variable '%s'"), *Vars[i]->AdsName));
 			}
 		}
 	}
@@ -198,6 +238,15 @@ void ATcAdsMaster::AddWriteVariable(UTcAdsVariable* Variable)
 	if (Variable)
 		WriteVariableList.Add(Variable);
 }
+
+// void ATcAdsMaster::RemoveReadVariable(UTcAdsVariable* Variable)
+// {
+//
+// }
+//
+// void ATcAdsMaster::RemoveWriteVariable(UTcAdsVariable* Variable)
+// {
+// }
 
 // float ATcAdsMaster::GetReadVariable(int Index) const
 // {

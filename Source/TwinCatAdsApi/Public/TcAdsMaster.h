@@ -31,6 +31,9 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	// virtual void OnConstruction(const FTransform& Transform) override;
+
+	static void RemoveVariable(const UTcAdsVariable* Variable, TArray<UTcAdsVariable*>& VarList,
+		TArray<FDataPar>& ReqList, size_t& BufferSize, EAdsAccessType Access);
 	
 	AmsAddr TargetAmsAddress_;
 	FTimerHandle ReadValuesTimerHandle_;
@@ -58,10 +61,12 @@ public:
 	AmsAddr LocalAmsAddr;
 	int32 AdsPort;
 
-	UFUNCTION(BlueprintCallable)
 	void AddReadVariable(UTcAdsVariable* Variable);
-	UFUNCTION(BlueprintCallable)
 	void AddWriteVariable(UTcAdsVariable* Variable);
+	void RemoveReadVariable(const UTcAdsVariable* Variable)
+	{ RemoveVariable(Variable, ReadVariableList, ReadReqBuffer_, ReadBufferSize_, EAdsAccessType::Read); }
+	void RemoveWriteVariable(const UTcAdsVariable* Variable)
+	{ RemoveVariable(Variable, WriteVariableList, WriteReqBuffer_, WriteBufferSize_, EAdsAccessType::Write); }
 	
 	// UFUNCTION(BlueprintCallable)
 	// float GetReadVariable(int Index) const;

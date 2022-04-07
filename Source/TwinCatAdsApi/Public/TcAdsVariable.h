@@ -11,22 +11,24 @@
 /**
  * 
  */
-UCLASS(meta = (BlueprintSpawnableComponent))
-class TWINCATADSAPI_API UTcAdsVariable : public UActorComponent // public UObject
+UCLASS(ClassGroup=(Custom), meta = (BlueprintSpawnableComponent))
+class TWINCATADSAPI_API UTcAdsVariable : public UActorComponent // public USceneComponent // public UActorComponent // public UObject
 {
 	GENERATED_BODY()
 
 public:
 	UTcAdsVariable();
+	explicit UTcAdsVariable(ATcAdsMaster* Master) : UTcAdsVariable() { AdsMaster = Master; }
 
 protected:
 	virtual void BeginPlay() override;
-
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	
 public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ads Variable")
-	FString Name;
+	FString AdsName;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ads Variable")
 	EAdsAccessType Access;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ads Variable")
@@ -61,6 +63,9 @@ public:
 //	const FDataPar* GetRequestData() const { return reinterpret_cast<const FDataPar*>(&SymbolEntry_.iGroup); }
 //	void SetExternalRequestData(FDataPar& Out) const { Out = *GetRequestData(); }
 
+	template <class TDst, class TSrc>
+	static void CopyCast(void* Dst, const void* Src);
+
 	size_t UnpackValues(const char* ErrorSrc, const char* ValueSrc, uint32 ErrorIn);
 	size_t PackValues(char* ValueDst) const;
 
@@ -81,3 +86,13 @@ private:
 	// uint32 IndexGroup;
 	// uint32 IndexOffset;
 };
+
+template <class TDst, class TSrc>
+void UTcAdsVariable::CopyCast(void* Dst, const void* Src)
+{
+	// TDst* dst = Dst;
+	// TSrc* src = Src;
+	// *dst = static_cast<TDst>(*src);
+
+	*static_cast<TDst*>(Dst) = static_cast<TDst>(*static_cast<const TSrc*>(Src));
+}
