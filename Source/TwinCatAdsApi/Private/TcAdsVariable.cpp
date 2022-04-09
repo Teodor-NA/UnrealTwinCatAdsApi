@@ -4,7 +4,8 @@
 #include "TcAdsVariable.h"
 
 #include "TcAdsMaster.h"
-#include "ThirdParty/TwinCatAdsApiLibrary/Include/TcAdsAPI.h"
+//#include "ThirdParty/TwinCatAdsApiLibrary/Include/TcAdsAPI.h"
+#include "TcAdsAPI.h"
 
 UTcAdsVariable::UTcAdsVariable() :
 	AdsName(TEXT("")),
@@ -71,6 +72,21 @@ void UTcAdsVariable::EndPlay(const EEndPlayReason::Type EndPlayReason)
 void UTcAdsVariable::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+}
+
+size_t UTcAdsVariable::TransferSize() const
+{
+	switch (Access)
+	{
+	// case EAdsAccessType::None:
+	// 	break;
+	case EAdsAccessType::Read:
+		return ReadSize();
+	case EAdsAccessType::Write:
+		return WriteSize();
+	default:
+		return 0;
+	}
 }
 
 uint32 UTcAdsVariable::GetSymbolEntryFromAds(int32 AdsPort, AmsAddr& AmsAddress, TArray<FDataPar>& Out)

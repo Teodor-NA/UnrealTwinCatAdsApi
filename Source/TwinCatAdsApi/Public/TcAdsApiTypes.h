@@ -116,6 +116,21 @@ enum class EAdsAccessType : uint8
 	Write  UMETA(DisplayName = "Write"),
 };
 
+constexpr const TCHAR* AdsAccessTypeName(EAdsAccessType Type)
+{
+	switch (Type)
+	{
+	case EAdsAccessType::None:
+		return TEXT("None");
+	case EAdsAccessType::Read:
+		return TEXT("Read");
+	case EAdsAccessType::Write:
+		return TEXT("Write");
+	default:
+		return TEXT("Invalid");
+	}
+}
+
 // Struct for getting data from ADS using ADSIGRP_SUMUP_READ or ADSIGRP_SUMUP_WRITE
 struct FDataPar
 {

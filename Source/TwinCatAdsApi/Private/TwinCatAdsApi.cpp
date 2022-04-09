@@ -4,8 +4,6 @@
 #include "Core.h"
 #include "Modules/ModuleManager.h"
 #include "Interfaces/IPluginManager.h"
-#include "ThirdParty/TwinCatAdsApiLibrary/Include/TcAdsDef.h"
-#include "ThirdParty/TwinCatAdsApiLibrary/Include/TcAdsAPI.h"
 
 #define LOCTEXT_NAMESPACE "FTwinCatAdsApiModule"
 
@@ -25,8 +23,12 @@ void FTwinCatAdsApiModule::StartupModule()
 	// FString LibraryPath;
 
 	//	LibraryPath = FPaths::Combine(*BaseDir, TEXT("Binaries/ThirdParty/Win64/TcAdsDll.dll"));
+#if PLATFORM_WINDOWS
 	FString LibraryPath = FPaths::Combine(*BaseDir, TEXT("Source/ThirdParty/TwinCatAdsApiLibrary/Bin/TcAdsDll.dll"));
-
+#elif PLATFORM_LINUX
+	// FString LibraryPath = ; Load linux .so
+#endif
+	
 	// ExampleLibraryHandle = !LibraryPath.IsEmpty() ? FPlatformProcess::GetDllHandle(*LibraryPath) : nullptr;
 	if (LibraryPath.IsEmpty())
 	{
@@ -38,18 +40,6 @@ void FTwinCatAdsApiModule::StartupModule()
 		TcAdsDllLibraryHandle = FPlatformProcess::GetDllHandle(*LibraryPath);
 	}
 
-	// if (TcAdsDllLibraryHandle)
-	// {
-	// 	// Call the test function in the third party library that opens a message box
-	// 	// AdsVersion Ver;
-	// 	// *reinterpret_cast<uint32*>(&Ver) = AdsGetDllVersion();
-	// 	//
-	// 	// // FText Disp = FText::Format(LOCTEXT("AdsLibrary", "Loaded third party TwinCAT ADS library version: %ld"), Ver);
-	// 	//
-	// 	// FText Disp = FText::FromString(FString::Printf(TEXT("Loaded third party TwinCAT ADS library version: %hhu.%hhu.%hu"), Ver.version, Ver.revision, Ver.build));
-	// 	//
-	// 	// FMessageDialog::Open(EAppMsgType::Ok, Disp);
-	// }
 	if (!TcAdsDllLibraryHandle)
 	{
 		FMessageDialog::Open(EAppMsgType::Ok, LOCTEXT("AdsLibrary", "Failed to load third party TwinCAT ADS library"));

@@ -5,7 +5,8 @@
 #include "CoreMinimal.h"
 #include "TcAdsApiTypes.h"
 // #include "TcAdsMaster.h"
-#include "ThirdParty/TwinCatAdsApiLibrary/Include/TcAdsDef.h"
+//#include "ThirdParty/TwinCatAdsApiLibrary/Include/TcAdsDef.h"
+#include "TcAdsDef.h"
 #include "TcAdsVariable.generated.h"
 
 /**
@@ -23,9 +24,13 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-	
+
 public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+
+	size_t TransferSize() const;
+	size_t ReadSize() const { return (Size_ + sizeof(uint32)); }
+	size_t WriteSize() const { return (Size_ + sizeof(FDataPar)); }
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ads Variable")
 	FString AdsName;
@@ -59,9 +64,6 @@ public:
 	uint32 GetSymbolEntryFromAds(int32 AdsPort, AmsAddr& AmsAddress, TArray<FDataPar>& Out);
 
 	bool NewVar() const { return NewVar_; }
-	
-//	const FDataPar* GetRequestData() const { return reinterpret_cast<const FDataPar*>(&SymbolEntry_.iGroup); }
-//	void SetExternalRequestData(FDataPar& Out) const { Out = *GetRequestData(); }
 
 	template <class TDst, class TSrc>
 	static void CopyCast(void* Dst, const void* Src);
@@ -73,8 +75,6 @@ public:
 	ATcAdsMaster* AdsMaster;
 	
 private:
-//	AdsSymbolEntry SymbolEntry_;
-//	FDataPar DataPar_;
 	
 	UPROPERTY(VisibleAnywhere, Category = "Ads Variable")
 	EAdsDataTypeId DataType_;
@@ -83,8 +83,6 @@ private:
 	uint32 Size_;
 
 	bool NewVar_;
-	// uint32 IndexGroup;
-	// uint32 IndexOffset;
 };
 
 template <class TDst, class TSrc>
