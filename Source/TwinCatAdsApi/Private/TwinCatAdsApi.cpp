@@ -18,18 +18,17 @@ void FTwinCatAdsApiModule::StartupModule()
 	
 	// Get the base directory of this plugin
 	FString BaseDir = IPluginManager::Get().FindPlugin("TwinCatAdsApi")->GetBaseDir();
-
+	FString ModuleDir = FPaths::Combine(*BaseDir, TEXT("Source"), TEXT("ThirdParty"), TEXT("TwinCatAdsApiLibrary"));
+	
 	// Add on the relative location of the third party dll and load it
-	// FString LibraryPath;
-
-	//	LibraryPath = FPaths::Combine(*BaseDir, TEXT("Binaries/ThirdParty/Win64/TcAdsDll.dll"));
 #if PLATFORM_WINDOWS
-	FString LibraryPath = FPaths::Combine(*BaseDir, TEXT("Source/ThirdParty/TwinCatAdsApiLibrary/Bin/TcAdsDll.dll"));
+#if PLATFORM_64BITS
+	FString LibraryPath = FPaths::Combine(*ModuleDir, TEXT("Bin"), TEXT("Win64"), TEXT("TcAdsDll.dll"));
+#endif
 #elif PLATFORM_LINUX
 	// FString LibraryPath = ; Load linux .so
 #endif
 	
-	// ExampleLibraryHandle = !LibraryPath.IsEmpty() ? FPlatformProcess::GetDllHandle(*LibraryPath) : nullptr;
 	if (LibraryPath.IsEmpty())
 	{
 		TcAdsDllLibraryHandle = nullptr;

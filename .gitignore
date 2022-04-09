@@ -26,6 +26,8 @@
 *.la
 *.a
 *.lib
+# Except the TwinCAT ADS lib
+!TcAdsDll.lib
 
 # Executables
 *.exe
