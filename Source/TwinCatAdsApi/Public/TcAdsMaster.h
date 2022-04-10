@@ -4,9 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "ThirdParty/TwinCatAdsApiLibrary/Include/TcAdsDef.h"
+#include "TcAdsDef.h"
 #include "TcAdsApiTypes.h"
-// #include "TcAdsVariable.h"
 #include "TcAdsMaster.generated.h"
 
 UCLASS()

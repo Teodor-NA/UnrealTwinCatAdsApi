@@ -4,13 +4,13 @@
 #include "TcAdsMaster.h"
 #include "TcAdsVariable.h"
 #include "Misc/DefaultValueHelper.h"
-// #include "ThirdParty/TwinCatAdsApiLibrary/Include/TcAdsAPI.h"
 #include "TcAdsAPI.h"
 
 // Sets default values
 ATcAdsMaster::ATcAdsMaster() :
 	RemoteAmsAddress_({{0, 0, 0, 0, 0, 0}, 0}),
 	ReadBufferSize_(0),
+	WriteBufferSize_(0),
 	ReadValuesInterval(0.1),
 	WriteValuesInterval(0.1),
 	RemoteAmsNetId(TEXT("127.0.0.1.1.1")),
@@ -78,7 +78,7 @@ void ATcAdsMaster::BeginPlay()
 	AdsVersion RemoteVersion;
 	
 	auto Err = AdsSyncReadDeviceInfoReqEx(AdsPort, &RemoteAmsAddress_, RemoteAsciiDevName, &RemoteVersion);
-
+	
 	if (Err)
 	{
 		if (GEngine)
@@ -100,7 +100,8 @@ void ATcAdsMaster::BeginPlay()
 			 	RemoteVersion.build
 			 	));
 	}
-	
+
+	// Start timers
 	GetWorldTimerManager().SetTimer(ReadValuesTimerHandle_,this, &ATcAdsMaster::ReadValues, ReadValuesInterval, true);
 	GetWorldTimerManager().SetTimer(WriteValuesTimerHandle_,this, &ATcAdsMaster::WriteValues, WriteValuesInterval, true);
 }
@@ -117,9 +118,9 @@ void ATcAdsMaster::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	/// variables, and therefore handles are not created for us. Might be wrong though, the documentation isn't exactly
 	/// clear on this...
 
+	// Clear lists. Need to do this since these are uproperties exposed to the editor and therefore have a weird ass lifespan
 	ReadVariableList.Empty();
 	WriteVariableList.Empty();
-	ReadReqBuffer_.Empty();
 	
 	if (AdsPort)
 	{
@@ -134,7 +135,7 @@ void ATcAdsMaster::RemoveVariable(const UTcAdsVariable* Variable, TArray<UTcAdsV
 {
 	if (!Variable)
 		return;
-	if (!Variable->Valid)
+	if (!Variable->ValidAds)
 		return;
 
 	auto Idx = VarList.IndexOfByKey(Variable);
@@ -168,6 +169,10 @@ void ATcAdsMaster::CheckForNewVars(TArray<UTcAdsVariable*>& Vars, TArray<FDataPa
 	int32 NewIndex = 0;
 	for (auto i = Vars.Num(); i--;)
 	{
+		// Skip variables that are pending kill (this shouldn't happen, but you never know with unreal...)
+		if (!IsValid(Vars[i]))
+			continue;
+		
 		if (Vars[i]->NewVar())
 		{
 			NewVar = true;
@@ -185,21 +190,14 @@ void ATcAdsMaster::CheckForNewVars(TArray<UTcAdsVariable*>& Vars, TArray<FDataPa
 	// arrays xxxVariableList and xxxReqBuffer_ are synchronized
 	for (auto i = NewIndex; i < Vars.Num(); ++i)
 	{
+		// Skip variables that are pending kill again
+		if (!IsValid(Vars[i]))
+			continue;
+		
 		auto Err = Vars[i]->GetSymbolEntryFromAds(AdsPort, RemoteAmsAddress_, ReqBuffer);
 		if (!Err)
 		{
 			BufferSize += Vars[i]->TransferSize();
-			// switch (Access) {
-			// case EAdsAccessType::Read:
-			// 	// For read vars we need the size of the variable plus the size of the error code for each variable
-			// 	BufferSize += Vars[i]->Size() + sizeof(uint32);
-			// 	break;
-			// case EAdsAccessType::Write:
-			// 	// For write vars we need the size of the variable plus the size of the request data
-			// 	BufferSize += Vars[i]->Size() + sizeof(FDataPar);
-			// 	break;
-			// default: ;
-			// }
 		}
 		
 		if (GEngine)
@@ -258,43 +256,6 @@ bool ATcAdsMaster::ParseAmsAddress(const FString& NetId, const int32 Port, AmsAd
 	Out = TempAddr;
 
 	return true;
-	
-//	bool Valid = false;
-
-	// int IntCount = 0;
-	// int CharCount = 0;
-	// wchar_t Tmp[] = { 0, 0, 0, 0 };
-	// wchar_t* pTmp = Tmp;
-	// for (auto& Chr : NetId)
-	// {
-	// 	if (CharCount > 3)
-	// 		return false; // Error
-	// 	
-	// 	if (Chr == TEXT('.'))
-	// 	{
-	// 		Out.netId.b[IntCount] = FString::To
-	// 		++IntCount;
-	// 		if (IntCount == 6)
-	// 			return true;
-	// 	}
-	//
-	// 	++CharCount;
-	// }
-	//
-	// return false; // Shouldn't happen
-	
-	// auto End = NetId.Len();
-	// int32 Idx = 0;
-	// for (int i = 0; i < 6; ++i)
-	// {
-	// 	FString Tmp;
-	// 	while (Idx != End)
-	// 	{
-	// 		if ()
-	// 		Tmp.AppendChar(NetId[Idx]);
-	// 	}
-	// }
-	
 }
 
 // Called every frame
@@ -351,7 +312,7 @@ void ATcAdsMaster::ReadValues()
 	char* pValuePos = pErrorPos + ReadReqBuffer_.Num()*sizeof(uint32);
 	for (auto AdsVar : ReadVariableList)
 	{
-		if (AdsVar->Valid)
+		if (IsValid(AdsVar) && AdsVar->ValidAds)
 		{
 			pValuePos += AdsVar->UnpackValues(pErrorPos, pValuePos, Err);
 			pErrorPos += sizeof(uint32);
@@ -376,11 +337,11 @@ void ATcAdsMaster::WriteValues()
 	char* BufferPos = WriteBuffer.GetData() + ReqSize;
 	
 	// Get data from variables
-	for (auto Var : WriteVariableList)
+	for (auto AdsVar : WriteVariableList)
 	{
-		if (Var->Valid)
+		if (IsValid(AdsVar) && AdsVar->ValidAds)
 		{
-			BufferPos += Var->PackValues(BufferPos);
+			BufferPos += AdsVar->PackValues(BufferPos);
 		}
 	}
 
@@ -411,7 +372,7 @@ void ATcAdsMaster::WriteValues()
 	uint32* pErrorPos = ErrorBuffer.GetData();
 	for (auto AdsVar : WriteVariableList)
 	{
-		if (AdsVar->Valid)
+		if (IsValid(AdsVar) && AdsVar->ValidAds)
 		{
 			AdsVar->Error = *pErrorPos;
 			++pErrorPos;

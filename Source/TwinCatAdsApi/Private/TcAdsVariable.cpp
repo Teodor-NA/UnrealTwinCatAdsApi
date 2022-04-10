@@ -2,9 +2,7 @@
 
 
 #include "TcAdsVariable.h"
-
 #include "TcAdsMaster.h"
-//#include "ThirdParty/TwinCatAdsApiLibrary/Include/TcAdsAPI.h"
 #include "TcAdsAPI.h"
 
 UTcAdsVariable::UTcAdsVariable() :
@@ -12,7 +10,7 @@ UTcAdsVariable::UTcAdsVariable() :
 	Access(EAdsAccessType::None),
 	Value(0.0f),
 	Error(0),
-	Valid(false),
+	ValidAds(false),
 	AdsMaster(nullptr),
 	DataType_(EAdsDataTypeId::ADST_VOID),
 	Size_(0),
@@ -112,7 +110,7 @@ uint32 UTcAdsVariable::GetSymbolEntryFromAds(int32 AdsPort, AmsAddr& AmsAddress,
 	
 	if (!Error)
 	{
-		Valid = true;
+		ValidAds = true;
 		Size_ = SymbolEntry.size;
 		DataType_ = static_cast<EAdsDataTypeId>(SymbolEntry.dataType);
 		Out.Emplace(*reinterpret_cast<FDataPar*>(&SymbolEntry.iGroup));
