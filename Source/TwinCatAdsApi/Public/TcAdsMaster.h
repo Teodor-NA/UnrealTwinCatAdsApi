@@ -59,15 +59,27 @@ public:
 	/*!
 	 * Intervals between calls to the plc to refresh data [s]
 	 */
-	UPROPERTY(EditAnywhere, Category = "Time")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time",
+		meta = (DisplayName = "Read Values Interval [s]"))
 	float ReadValuesInterval;
-	UPROPERTY(EditAnywhere, Category = "Time")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time",
+		meta = (DisplayName = "Write Values Interval [s]"))
 	float WriteValuesInterval;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Time",
+		meta = (DisplayName = "Read Data Round Trip Time [ms]"))
+	float ReadDataRoundTripTime;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, EditFixedSize, Category = "Remote ADS Info")
 	FString RemoteAmsNetId;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Remote ADS Info")
 	int32 RemoteAmsPort;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Remote ADS Info")
+	bool RemoteAmsAddressValid;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Remote ADS Info")
+	FString RemoteDeviceName;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Remote ADS Info")
+	FString RemoteAdsVersion;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Local ADS Info")
 	int32 AdsPort;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Local ADS Info")

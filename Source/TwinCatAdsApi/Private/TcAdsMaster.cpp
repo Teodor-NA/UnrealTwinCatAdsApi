@@ -13,8 +13,10 @@ ATcAdsMaster::ATcAdsMaster() :
 	WriteBufferSize_(0),
 	ReadValuesInterval(0.1),
 	WriteValuesInterval(0.1),
+	ReadDataRoundTripTime(0.0f),
 	RemoteAmsNetId(TEXT("127.0.0.1.1.1")),
-	RemoteAmsPort(851)
+	RemoteAmsPort(851),
+	RemoteAmsAddressValid(false)
 {
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = false;
@@ -28,10 +30,18 @@ ATcAdsMaster::ATcAdsMaster() :
 void ATcAdsMaster::BeginPlay()
 {
 	Super::BeginPlay();
+	
+	union {uint32 Raw; AdsVersion Version;}LocalVersion;
+	LocalVersion.Raw = AdsGetDllVersion();
+	LocalDllVersion = FString::Printf(TEXT("%u.%u.%u"),
+		LocalVersion.Version.version,
+		LocalVersion.Version.revision,
+		LocalVersion.Version.build
+	);
 
-	bool AmsAddrParsed = ParseAmsAddress(RemoteAmsNetId, RemoteAmsPort, RemoteAmsAddress_);
+	RemoteAmsAddressValid = ParseAmsAddress(RemoteAmsNetId, RemoteAmsPort, RemoteAmsAddress_);
 
-	if (AmsAddrParsed)
+	if (RemoteAmsAddressValid)
 	{
 		if (GEngine)
 		{
@@ -74,6 +84,18 @@ void ATcAdsMaster::BeginPlay()
 		return;
 	}
 
+	AmsAddr LocalAddr;
+	AdsGetLocalAddressEx(AdsPort, &LocalAddr);
+	LocalAmsAddress = FString::Printf(TEXT("%u.%u.%u.%u.%u.%u:%u"),
+		LocalAddr.netId.b[0],
+		LocalAddr.netId.b[1],
+		LocalAddr.netId.b[2],
+		LocalAddr.netId.b[3],
+		LocalAddr.netId.b[4],
+		LocalAddr.netId.b[5],
+		LocalAddr.port
+	); 
+	
 	char RemoteAsciiDevName[50];
 	AdsVersion RemoteVersion;
 	
@@ -89,12 +111,14 @@ void ATcAdsMaster::BeginPlay()
 		return;
 	}
 
-	FString RemoteDevName(RemoteAsciiDevName);
+	RemoteDeviceName = FString(RemoteAsciiDevName);
+	RemoteAdsVersion = FString::Printf(TEXT("%u.%u.%u"), RemoteVersion.version, RemoteVersion.revision, RemoteVersion.build);
+	
 	if (GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Green,
 			 FString::Printf( TEXT("Connected to '%s' using version %u.%u.%u \nStarting ADS communication"),
-			 	*RemoteDevName,
+			 	*RemoteDeviceName,
 			 	RemoteVersion.version,
 			 	RemoteVersion.revision,
 			 	RemoteVersion.build
@@ -289,6 +313,8 @@ void ATcAdsMaster::ReadValues()
 	
 	// Get data from ADS
 	unsigned long BytesRead;
+
+	double ReadTimeTick = FPlatformTime::Seconds();
 	long Err = AdsSyncReadWriteReqEx2(
 		AdsPort,
 		&RemoteAmsAddress_,
@@ -300,7 +326,10 @@ void ATcAdsMaster::ReadValues()
 		ReadReqBuffer_.GetData(),
 		&BytesRead
 	);
+	double ReadTimeTock = FPlatformTime::Seconds();
 
+	ReadDataRoundTripTime = static_cast<float>((ReadTimeTock - ReadTimeTick)*1000.0);
+	
 	if (Err && GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(1, 5, FColor::Red,
