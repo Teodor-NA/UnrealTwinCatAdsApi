@@ -111,9 +111,18 @@ enum class EAdsDataTypeId : uint32
 UENUM(BlueprintType)
 enum class EAdsAccessType : uint8
 {
+	// Disabled
 	None = 0 UMETA(DisplayName = "None"),
+	// Read on local cycle
 	Read  UMETA(DisplayName = "Read"),
+	// Write on local cycle
 	Write  UMETA(DisplayName = "Write"),
+	// Read on remote cycle
+	ReadCyclic  UMETA(DisplayName = "Read Cyclic"),
+	// Read on change
+	ReadOnChange  UMETA(DisplayName = "Read On Change"),
+	// Write on change
+	WriteOnChange  UMETA(DisplayName = "Write On Change")
 };
 
 constexpr const TCHAR* AdsAccessTypeName(EAdsAccessType Type)
@@ -134,9 +143,9 @@ constexpr const TCHAR* AdsAccessTypeName(EAdsAccessType Type)
 // Struct for getting data from ADS using ADSIGRP_SUMUP_READ or ADSIGRP_SUMUP_WRITE
 struct FDataPar
 {
-	unsigned long IndexGroup;	// index group in ADS server interface
-	unsigned long IndexOffset;	// index offset in ADS server interface
-	unsigned long Length;		// count of bytes to read	
+	unsigned long indexGroup;	// index group in ADS server interface
+	unsigned long indexOffset;	// index offset in ADS server interface
+	unsigned long length;		// count of bytes to read	
 };
 
 /*!
@@ -147,8 +156,8 @@ template <class T>
 class TSimpleBuffer
 {
 public:
-	explicit TSimpleBuffer(size_t Count = 0) : Data_(nullptr), Count_(0) { Reserve(Count); }
-	~TSimpleBuffer() { Destroy(); }
+	explicit TSimpleBuffer(size_t Count = 0) : _data(nullptr), _count(0) { reserve(Count); }
+	~TSimpleBuffer() { destroy(); }
 
 	/*!
 	 * Size of data type \a T
@@ -159,63 +168,63 @@ public:
 	 * Reserve new memory if \a Count is greater than currently allocated memory, otherwise does nothing. Deletes
 	 * existing memory if already allocated. Does not copy content (any existing content is lost). Does not initialize
 	 * new memory. Does not shrink.
-	 * @param Count Number of elements to reserve
+	 * @param num Number of elements to reserve
 	 */
-	void Reserve(size_t Count)
+	void reserve(const size_t num)
 	{
-		if (Count <= Count_)
+		if (num <= _count)
 			return;
 
-		Destroy();
-		Data_ = static_cast<T*>(malloc(Count * TypeSize));
-		Count_ = Count;
+		destroy();
+		_data = static_cast<T*>(malloc(num * TypeSize));
+		_count = num;
 	}
 	/*!
 	 * Release any reserved memory. If no memory is reserved no action is taken
 	 */
-	void Destroy()
+	void destroy()
 	{
-		if (Data_ == nullptr)
+		if (_data == nullptr)
 			return;
 
-		free(Data_);
-		Data_ = nullptr;
-		Count_ = 0;
+		free(_data);
+		_data = nullptr;
+		_count = 0;
 
 	}
 
 	/*!
 	 * Get const data pointer
 	 */
-	const T* GetData() const { return Data_; }
+	const T* getData() const { return _data; }
 	/*!
 	 * Get data pointer
 	 */
-	T* GetData() { return Data_; }
+	T* getData() { return _data; }
 	/*!
 	 * Get the number of \a T elements currently reserved
 	 */
-	size_t Count() const { return Count_; }
+	size_t count() const { return _count; }
 	/*!
 	 * Get the byte size of reserved memory
 	 */
-	size_t ByteSize() const { return (Count_*TypeSize); }
+	size_t byteSize() const { return (_count*TypeSize); }
 	
 private:
-	T* Data_;
-	size_t Count_;
+	T* _data;
+	size_t _count;
 };
 
 class FSimpleAsciiString : public TSimpleBuffer<char>
 {
 public:
 	
-	explicit FSimpleAsciiString(const char* C_String) : TSimpleBuffer(strlen(C_String) + 1)
+	explicit FSimpleAsciiString(const char* cString) : TSimpleBuffer(strlen(cString) + 1)
 	{
-		strcpy_s(GetData(), ByteSize(), C_String);
+		strcpy_s(getData(), byteSize(), cString);
 	}
 
-	explicit FSimpleAsciiString(const FString& Src) : FSimpleAsciiString(StringCast<ANSICHAR>(*Src).Get()) {}
+	explicit FSimpleAsciiString(const FString& src) : FSimpleAsciiString(StringCast<ANSICHAR>(*src).Get()) {}
 };
 
 // USTRUCT()

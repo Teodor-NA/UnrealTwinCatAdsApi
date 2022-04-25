@@ -8,11 +8,11 @@
 
 // Sets default values
 ATcAdsMaster::ATcAdsMaster() :
-	RemoteAmsAddress_({{0, 0, 0, 0, 0, 0}, 0}),
-	ReadBufferSize_(0),
-	WriteBufferSize_(0),
-	ReadValuesInterval(0.1),
-	WriteValuesInterval(0.1),
+	_remoteAmsAddress({{0, 0, 0, 0, 0, 0}, 0}),
+	_readBufferSize(0),
+	_writeBufferSize(0),
+	ReadValuesInterval(0.1f),
+	WriteValuesInterval(0.1f),
 	ReadDataRoundTripTime(0.0f),
 	RemoteAmsNetId(TEXT("127.0.0.1.1.1")),
 	RemoteAmsPort(851),
@@ -31,15 +31,15 @@ void ATcAdsMaster::BeginPlay()
 {
 	Super::BeginPlay();
 	
-	union {uint32 Raw; AdsVersion Version;}LocalVersion;
-	LocalVersion.Raw = AdsGetDllVersion();
+	union {uint32 raw; AdsVersion version;}localVersion;
+	localVersion.raw = AdsGetDllVersion();
 	LocalDllVersion = FString::Printf(TEXT("%u.%u.%u"),
-		LocalVersion.Version.version,
-		LocalVersion.Version.revision,
-		LocalVersion.Version.build
+		localVersion.version.version,
+		localVersion.version.revision,
+		localVersion.version.build
 	);
 
-	RemoteAmsAddressValid = ParseAmsAddress(RemoteAmsNetId, RemoteAmsPort, RemoteAmsAddress_);
+	RemoteAmsAddressValid = parseAmsAddress(RemoteAmsNetId, RemoteAmsPort, _remoteAmsAddress);
 
 	if (RemoteAmsAddressValid)
 	{
@@ -47,13 +47,13 @@ void ATcAdsMaster::BeginPlay()
 		{
 			GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Green,
 				FString::Printf(TEXT("Attempting communication with remote AMS Net Id %u.%u.%u.%u.%u.%u on port %u"),
-					RemoteAmsAddress_.netId.b[0],
-					RemoteAmsAddress_.netId.b[1],
-					RemoteAmsAddress_.netId.b[2],
-					RemoteAmsAddress_.netId.b[3],
-					RemoteAmsAddress_.netId.b[4],
-					RemoteAmsAddress_.netId.b[5],
-					RemoteAmsAddress_.port
+					_remoteAmsAddress.netId.b[0],
+					_remoteAmsAddress.netId.b[1],
+					_remoteAmsAddress.netId.b[2],
+					_remoteAmsAddress.netId.b[3],
+					_remoteAmsAddress.netId.b[4],
+					_remoteAmsAddress.netId.b[5],
+					_remoteAmsAddress.port
 					));
 		}
 	}
@@ -84,24 +84,24 @@ void ATcAdsMaster::BeginPlay()
 		return;
 	}
 
-	AmsAddr LocalAddr;
-	AdsGetLocalAddressEx(AdsPort, &LocalAddr);
+	AmsAddr localAddress;
+	AdsGetLocalAddressEx(AdsPort, &localAddress);
 	LocalAmsAddress = FString::Printf(TEXT("%u.%u.%u.%u.%u.%u:%u"),
-		LocalAddr.netId.b[0],
-		LocalAddr.netId.b[1],
-		LocalAddr.netId.b[2],
-		LocalAddr.netId.b[3],
-		LocalAddr.netId.b[4],
-		LocalAddr.netId.b[5],
-		LocalAddr.port
+		localAddress.netId.b[0],
+		localAddress.netId.b[1],
+		localAddress.netId.b[2],
+		localAddress.netId.b[3],
+		localAddress.netId.b[4],
+		localAddress.netId.b[5],
+		localAddress.port
 	); 
 	
-	char RemoteAsciiDevName[50];
-	AdsVersion RemoteVersion;
+	char remoteAsciiDevName[50];
+	AdsVersion remoteVersion;
+
+	auto err = AdsSyncReadDeviceInfoReqEx(AdsPort, &_remoteAmsAddress, remoteAsciiDevName, &remoteVersion);
 	
-	auto Err = AdsSyncReadDeviceInfoReqEx(AdsPort, &RemoteAmsAddress_, RemoteAsciiDevName, &RemoteVersion);
-	
-	if (Err)
+	if (err)
 	{
 		if (GEngine)
 		{
@@ -111,32 +111,35 @@ void ATcAdsMaster::BeginPlay()
 		return;
 	}
 
-	RemoteDeviceName = FString(RemoteAsciiDevName);
-	RemoteAdsVersion = FString::Printf(TEXT("%u.%u.%u"), RemoteVersion.version, RemoteVersion.revision, RemoteVersion.build);
+	RemoteDeviceName = FString(remoteAsciiDevName);
+	RemoteAdsVersion = FString::Printf(TEXT("%u.%u.%u"), remoteVersion.version, remoteVersion.revision, remoteVersion.build);
 	
 	if (GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Green,
 			 FString::Printf( TEXT("Connected to '%s' using version %u.%u.%u \nStarting ADS communication"),
 			 	*RemoteDeviceName,
-			 	RemoteVersion.version,
-			 	RemoteVersion.revision,
-			 	RemoteVersion.build
+			 	remoteVersion.version,
+			 	remoteVersion.revision,
+			 	remoteVersion.build
 			 	));
 	}
 
 	// Start timers
-	GetWorldTimerManager().SetTimer(ReadValuesTimerHandle_,this, &ATcAdsMaster::ReadValues, ReadValuesInterval, true);
-	GetWorldTimerManager().SetTimer(WriteValuesTimerHandle_,this, &ATcAdsMaster::WriteValues, WriteValuesInterval, true);
+	if (ReadValuesInterval > 0.0f)
+		GetWorldTimerManager().SetTimer(_readValuesTimerHandle,this, &ATcAdsMaster::readValues, ReadValuesInterval, true);
+
+	if (WriteValuesInterval > 0.0f)
+		GetWorldTimerManager().SetTimer(_writeValuesTimerHandle,this, &ATcAdsMaster::writeValues, WriteValuesInterval, true);
 }
 
-void ATcAdsMaster::EndPlay(const EEndPlayReason::Type EndPlayReason)
+void ATcAdsMaster::EndPlay(const EEndPlayReason::Type endPlayReason)
 {
-	Super::EndPlay(EndPlayReason);
+	Super::EndPlay(endPlayReason);
 
 	// Stop timers
-	GetWorldTimerManager().ClearTimer(ReadValuesTimerHandle_);
-	GetWorldTimerManager().ClearTimer(WriteValuesTimerHandle_);
+	GetWorldTimerManager().ClearTimer(_readValuesTimerHandle);
+	GetWorldTimerManager().ClearTimer(_writeValuesTimerHandle);
 
 	/// Seems like we don't need to release handles, since we are actually using the index group and offset to access
 	/// variables, and therefore handles are not created for us. Might be wrong though, the documentation isn't exactly
@@ -154,256 +157,295 @@ void ATcAdsMaster::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	
 }
 
-void ATcAdsMaster::RemoveVariable(const UTcAdsVariable* Variable, TArray<UTcAdsVariable*>& VarList,
-	TArray<FDataPar>& ReqList, size_t& BufferSize) //, EAdsAccessType Access)
+void ATcAdsMaster::removeVariable(const UTcAdsVariable* variable) // const UTcAdsVariable* Variable, TArray<UTcAdsVariable*>& VarList, TArray<FDataPar>& ReqList, size_t& BufferSize) //, EAdsAccessType Access)
 {
-	if (!Variable)
+	if (!variable)
 		return;
-	if (!Variable->ValidAds)
+	if (!variable->ValidAds)
 		return;
-
-	auto Idx = VarList.IndexOfByKey(Variable);
-	if (Idx == INDEX_NONE)
+	
+	switch (variable->Access)
 	{
-		if (GEngine)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Yellow,
-			   FString::Printf(TEXT("No variable '%s' found in list. No action taken"), *Variable->AdsName));
-		}
-	}
-	else
-	{
-		VarList.RemoveAt(Idx);
-		ReqList.RemoveAt(Idx);
-		BufferSize -= Variable->TransferSize();
-		
-		if (GEngine)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Green,
-			   FString::Printf(TEXT("Unsubscribed variable '%s'"), *Variable->AdsName));
-		}
+	case EAdsAccessType::None: break;
+	case EAdsAccessType::Read:
+		removeVariablePrivate(variable, ReadVariableList, _readReqBuffer, _readBufferSize);
+		break;
+	case EAdsAccessType::Write:
+		removeVariablePrivate(variable, WriteVariableList, _writeReqBuffer, _writeBufferSize);
+		break;
+	case EAdsAccessType::ReadCyclic: break;
+	case EAdsAccessType::ReadOnChange: break;
+	case EAdsAccessType::WriteOnChange: break;
+	default: ;
 	}
 }
 
-void ATcAdsMaster::CheckForNewVars(TArray<UTcAdsVariable*>& Vars, TArray<FDataPar>& ReqBuffer, size_t& BufferSize) //, EAdsAccessType Access)
+void ATcAdsMaster::checkForNewVars(TArray<UTcAdsVariable*>& vars, TArray<FDataPar>& reqBuffer, size_t& bufferSize) //, EAdsAccessType Access)
 {
 	// Check for new variables in the list. Since new variables are always added at the end, we check in reverse
 	// (so that normally we will check the first entry and immediately step out).
-	bool NewVar = false;
-	int32 NewIndex = 0;
-	for (auto i = Vars.Num(); i--;)
+	bool newVar = false;
+	int32 newIndex = 0;
+	for (auto i = vars.Num(); i--;)
 	{
 		// Skip variables that are pending kill (this shouldn't happen, but you never know with unreal...)
-		if (!IsValid(Vars[i]))
+		if (!IsValid(vars[i]))
 			continue;
 		
-		if (Vars[i]->NewVar())
+		if (vars[i]->newVar())
 		{
-			NewVar = true;
-			NewIndex = i;
+			newVar = true;
+			newIndex = i;
 		}
 		else
 			break;
 	}
 
 	// Nothing to do
-	if (!NewVar)
+	if (!newVar)
 		return;
 
 	// If there are any new variables then we must ask ADS for them in forward order, so that the
 	// arrays xxxVariableList and xxxReqBuffer_ are synchronized
-	for (auto i = NewIndex; i < Vars.Num(); ++i)
+	for (auto i = newIndex; i < vars.Num(); ++i)
 	{
 		// Skip variables that are pending kill again
-		if (!IsValid(Vars[i]))
+		if (!IsValid(vars[i]))
 			continue;
-		
-		auto Err = Vars[i]->GetSymbolEntryFromAds(AdsPort, RemoteAmsAddress_, ReqBuffer);
-		if (!Err)
+
+		auto err = vars[i]->getSymbolEntryFromAds(AdsPort, _remoteAmsAddress, reqBuffer);
+		if (!err)
 		{
-			BufferSize += Vars[i]->TransferSize();
+			bufferSize += vars[i]->transferSize();
 		}
 		
 		if (GEngine)
 		{
-			if (Err)
+			if (err)
 			{
 				GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Yellow,
 					FString::Printf(TEXT("Failed to subscribe to '%s' variable '%s'. Error code 0x%x"),
-						AdsAccessTypeName(Vars[i]->Access),
-						*Vars[i]->AdsName,
-						Err
+						AdsAccessTypeName(vars[i]->Access),
+						*vars[i]->AdsName,
+						err
 						));
 			}
 			else
 			{
 				GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Green,
 					FString::Printf(TEXT("Successfully subscribed to '%s' variable '%s'"),
-						AdsAccessTypeName(Vars[i]->Access),
-						*Vars[i]->AdsName
+						AdsAccessTypeName(vars[i]->Access),
+						*vars[i]->AdsName
 						));
 			}
 		}
 	}
 }
 
-bool ATcAdsMaster::ParseAmsAddress(const FString& NetId, const int32 Port, AmsAddr& Out)
+bool ATcAdsMaster::parseAmsAddress(const FString& netId, const int32 port, AmsAddr& out)
 {
-	if ((Port > 65535) || (Port < 0))
+	if ((port > 65535) || (port < 0))
 		return false;
 	
-	AmsAddr TempAddr = {{0, 0,0 ,0, 0,0}, static_cast<uint16>(Port)};
+	AmsAddr tempAddress = {{0, 0,0 ,0, 0,0}, static_cast<uint16>(port)};
 
-	TCHAR Delim = TEXT('.');
+	constexpr TCHAR delim = TEXT('.');
 	
-	TArray<FString> Tmp;
-	NetId.ParseIntoArray(Tmp, &Delim);
+	TArray<FString> tmp;
+	netId.ParseIntoArray(tmp, &delim);
 
-	if (Tmp.Num() != 6)
+	if (tmp.Num() != 6)
 		return false;
 
-	int32 Idx = 0;
-	for (auto& Str : Tmp)
+	int32 idx = 0;
+	for (auto& str : tmp)
 	{
-		int32 Val;
-		bool Success = FDefaultValueHelper::ParseInt(Str, Val);
-		if ((Val > 255) || (Val < 0))
-			Success = false;
+		int32 val;
+		bool success = FDefaultValueHelper::ParseInt(str, val);
+		if ((val > 255) || (val < 0))
+			success = false;
 
-		if (!Success)
+		if (!success)
 			return false;
 
-		TempAddr.netId.b[Idx] = static_cast<uint8>(Val);
-		++Idx;
+		tempAddress.netId.b[idx] = static_cast<uint8>(val);
+		++idx;
 	}
 
-	Out = TempAddr;
+	out = tempAddress;
 
 	return true;
 }
 
+void ATcAdsMaster::removeVariablePrivate(const UTcAdsVariable* variable, TArray<UTcAdsVariable*>& variableList,
+	TArray<FDataPar> reqBuffer, size_t& bufferSize)
+{
+	auto idx = variableList.IndexOfByKey(variable);
+	if (idx == INDEX_NONE)
+	{
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Yellow,
+			   FString::Printf(TEXT("No variable '%s' found in list. No action taken"), *variable->AdsName));
+		}
+		return;
+	}
+
+	variableList.RemoveAt(idx);
+	reqBuffer.RemoveAt(idx);
+	bufferSize -= variable->transferSize();
+	
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Green,
+		   FString::Printf(TEXT("Unsubscribed variable '%s'"), *variable->AdsName));
+	}
+}
+
 // Called every frame
-void ATcAdsMaster::Tick(float DeltaTime)
+void ATcAdsMaster::Tick(float deltaTime)
 {
-	Super::Tick(DeltaTime);
+	Super::Tick(deltaTime);
 
 }
 
-void ATcAdsMaster::AddReadVariable(UTcAdsVariable* Variable)
+void ATcAdsMaster::addVariable(UTcAdsVariable* variable)
 {
-	if (Variable)
-		ReadVariableList.Add(Variable);
+	if (!variable)
+		return;
+
+	switch (variable->Access)
+	{
+	case EAdsAccessType::None: break;
+	case EAdsAccessType::Read:
+		ReadVariableList.Add(variable);
+		break;
+	case EAdsAccessType::Write:
+		WriteVariableList.Add(variable);
+		break;
+	case EAdsAccessType::ReadCyclic: break;
+	case EAdsAccessType::ReadOnChange: break;
+	case EAdsAccessType::WriteOnChange: break;
+	default: ;
+	}
+	
 }
 
-void ATcAdsMaster::AddWriteVariable(UTcAdsVariable* Variable)
-{
-	if (Variable)
-		WriteVariableList.Add(Variable);
-}
+// void ATcAdsMaster::AddReadVariable(UTcAdsVariable* Variable)
+// {
+// 	if (Variable)
+// 		ReadVariableList.Add(Variable);
+// }
+//
+// void ATcAdsMaster::AddWriteVariable(UTcAdsVariable* Variable)
+// {
+// 	if (Variable)
+// 		WriteVariableList.Add(Variable);
+// }
 
-void ATcAdsMaster::ReadValues()
+void ATcAdsMaster::readValues()
 {
-	CheckForNewVars(ReadVariableList, ReadReqBuffer_, ReadBufferSize_); //, EAdsAccessType::Read);
-
+	checkForNewVars(ReadVariableList, _readReqBuffer, _readBufferSize); //, EAdsAccessType::Read);
+	
 	// Nothing to do
-	if (ReadReqBuffer_.Num() == 0)
+	if (_readReqBuffer.Num() == 0)
 		return;
 	
-	TSimpleBuffer<char> ReadBuffer(ReadBufferSize_);
+	TSimpleBuffer<char> readBuffer(_readBufferSize);
 	
 	// Get data from ADS
-	unsigned long BytesRead;
+	unsigned long bytesRead;
 
-	double ReadTimeTick = FPlatformTime::Seconds();
-	long Err = AdsSyncReadWriteReqEx2(
+	double readTimeTick = FPlatformTime::Seconds();
+	long err = AdsSyncReadWriteReqEx2(
 		AdsPort,
-		&RemoteAmsAddress_,
+		&_remoteAmsAddress,
 		ADSIGRP_SUMUP_READ,
-		ReadReqBuffer_.Num(),
-		ReadBuffer.ByteSize(),
-		ReadBuffer.GetData(),
-		ReadReqBuffer_.Num()*sizeof(FDataPar),
-		ReadReqBuffer_.GetData(),
-		&BytesRead
+		_readReqBuffer.Num(),
+		readBuffer.byteSize(),
+		readBuffer.getData(),
+		_readReqBuffer.Num()*sizeof(FDataPar),
+		_readReqBuffer.GetData(),
+		&bytesRead
 	);
-	double ReadTimeTock = FPlatformTime::Seconds();
+	double readTimeTock = FPlatformTime::Seconds();
 
-	ReadDataRoundTripTime = static_cast<float>((ReadTimeTock - ReadTimeTick)*1000.0);
+	ReadDataRoundTripTime = static_cast<float>((readTimeTock - readTimeTick)*1000.0);
 	
-	if (Err && GEngine)
+	if (err && GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(1, 5, FColor::Red,
-		   FString::Printf(TEXT("Failed to get data from ADS, error code 0x%x"), Err));
+		   FString::Printf(TEXT("Failed to get data from ADS, error code 0x%x"), err));
 	}
 
 	// Unpack data
-	char* pErrorPos = ReadBuffer.GetData();
-	char* pValuePos = pErrorPos + ReadReqBuffer_.Num()*sizeof(uint32);
-	for (auto AdsVar : ReadVariableList)
+	char* pErrorPos = readBuffer.getData();
+	char* pValuePos = pErrorPos + _readReqBuffer.Num()*sizeof(uint32);
+	for (const auto adsVar : ReadVariableList)
 	{
-		if (IsValid(AdsVar) && AdsVar->ValidAds)
+		if (IsValid(adsVar) && adsVar->ValidAds)
 		{
-			pValuePos += AdsVar->UnpackValues(pErrorPos, pValuePos, Err);
+			pValuePos += adsVar->unpackValues(pErrorPos, pValuePos, err);
 			pErrorPos += sizeof(uint32);
 		}
 	}
 }
 
-void ATcAdsMaster::WriteValues()
+void ATcAdsMaster::writeValues()
 {
-	CheckForNewVars(WriteVariableList, WriteReqBuffer_, WriteBufferSize_); //, EAdsAccessType::Write);
+	checkForNewVars(WriteVariableList, _writeReqBuffer, _writeBufferSize); //, EAdsAccessType::Write);
 
 	// Nothing to do
-	if (WriteReqBuffer_.Num() == 0)
+	if (_writeReqBuffer.Num() == 0)
 		return;
 
-	size_t ReqSize = WriteReqBuffer_.Num()*sizeof(FDataPar);
+	const size_t reqSize = _writeReqBuffer.Num()*sizeof(FDataPar);
 	
-	TSimpleBuffer<char> WriteBuffer(WriteBufferSize_);
+	TSimpleBuffer<char> writeBuffer(_writeBufferSize);
 	// Copy data from Write request buffer
-	memcpy_s(WriteBuffer.GetData(), WriteBuffer.ByteSize(), WriteReqBuffer_.GetData(), ReqSize);
+	memcpy_s(writeBuffer.getData(), writeBuffer.byteSize(), _writeReqBuffer.GetData(), reqSize);
 
-	char* BufferPos = WriteBuffer.GetData() + ReqSize;
+	char* bufferPos = writeBuffer.getData() + reqSize;
 	
 	// Get data from variables
-	for (auto AdsVar : WriteVariableList)
+	for (const auto adsVar : WriteVariableList)
 	{
-		if (IsValid(AdsVar) && AdsVar->ValidAds)
+		if (IsValid(adsVar) && adsVar->ValidAds)
 		{
-			BufferPos += AdsVar->PackValues(BufferPos);
+			bufferPos += adsVar->packValues(bufferPos);
 		}
 	}
 
 	// Make a buffer for the ADS return codes
-	TSimpleBuffer<uint32> ErrorBuffer(WriteReqBuffer_.Num());
+	TSimpleBuffer<uint32> errorBuffer(_writeReqBuffer.Num());
 	
 	// Get data from ADS
-	unsigned long BytesRead;
-	long Err = AdsSyncReadWriteReqEx2(
+	unsigned long bytesRead;
+	long err = AdsSyncReadWriteReqEx2(
 		AdsPort,
-		&RemoteAmsAddress_,
+		&_remoteAmsAddress,
 		ADSIGRP_SUMUP_WRITE,
-		WriteReqBuffer_.Num(),
-		ErrorBuffer.ByteSize(),
-		ErrorBuffer.GetData(),
-		WriteBuffer.ByteSize(),
-		WriteBuffer.GetData(),
-		&BytesRead
+		_writeReqBuffer.Num(),
+		errorBuffer.byteSize(),
+		errorBuffer.getData(),
+		writeBuffer.byteSize(),
+		writeBuffer.getData(),
+		&bytesRead
 	);
 
-	if (Err && GEngine)
+	if (err && GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(2, 5, FColor::Red,
-		   FString::Printf(TEXT("Failed to write data to ADS, error code 0x%x"), Err));
+		   FString::Printf(TEXT("Failed to write data to ADS, error code 0x%x"), err));
 	}
 
 	// Unpack errors
-	uint32* pErrorPos = ErrorBuffer.GetData();
-	for (auto AdsVar : WriteVariableList)
+	uint32* pErrorPos = errorBuffer.getData();
+	for (auto adsVar : WriteVariableList)
 	{
-		if (IsValid(AdsVar) && AdsVar->ValidAds)
+		if (IsValid(adsVar) && adsVar->ValidAds)
 		{
-			AdsVar->Error = *pErrorPos;
+			adsVar->Error = *pErrorPos;
 			++pErrorPos;
 		}
 	}

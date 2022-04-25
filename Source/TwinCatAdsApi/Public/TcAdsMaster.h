@@ -17,51 +17,55 @@ public:
 	// Sets default values for this actor's properties
 	ATcAdsMaster();
 
-	void ReadValues();
-	void WriteValues();
+	void readValues();
+	void writeValues();
 
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 	
-	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void EndPlay(const EEndPlayReason::Type endPlayReason) override;
 	
-	static void RemoveVariable(const UTcAdsVariable* Variable, TArray<UTcAdsVariable*>& VarList,
-		TArray<FDataPar>& ReqList, size_t& BufferSize); //, EAdsAccessType Access);
+	// static void RemoveVariable(const UTcAdsVariable* Variable, TArray<UTcAdsVariable*>& VarList,
+	// 	TArray<FDataPar>& ReqList, size_t& BufferSize); //, EAdsAccessType Access);
 	
-	AmsAddr RemoteAmsAddress_;
-	FTimerHandle ReadValuesTimerHandle_;
-	FTimerHandle WriteValuesTimerHandle_;
+	AmsAddr _remoteAmsAddress;
+	FTimerHandle _readValuesTimerHandle;
+	FTimerHandle _writeValuesTimerHandle;
 
-	TArray<FDataPar> ReadReqBuffer_;
-	size_t ReadBufferSize_;
-	TArray<FDataPar> WriteReqBuffer_;
-	size_t WriteBufferSize_;
-	
-	// AdsVersion DllVersion_;
-	// AmsAddr LocalAmsAddr_;
+	TArray<FDataPar> _readReqBuffer;
+	size_t _readBufferSize;
+	TArray<FDataPar> _writeReqBuffer;
+	size_t _writeBufferSize;
 
-	void CheckForNewVars(TArray<UTcAdsVariable*>& Vars, TArray<FDataPar>& ReqBuffer, size_t& BufferSize); //, EAdsAccessType Acess);
-	static bool ParseAmsAddress(const FString& NetId, const int32 Port, AmsAddr& Out);
+	void checkForNewVars(TArray<UTcAdsVariable*>& vars, TArray<FDataPar>& reqBuffer, size_t& bufferSize); //, EAdsAccessType Acess);
+	static bool parseAmsAddress(const FString& netId, int32 port, AmsAddr& out);
 
+	static void removeVariablePrivate(const UTcAdsVariable* variable, TArray<UTcAdsVariable*>& variableList,
+		TArray<FDataPar> reqBuffer, size_t& bufferSize);
 	
 public:	
 	// Called every frame
-	virtual void Tick(float DeltaTime) override;
+	virtual void Tick(float deltaTime) override;
 	
-	void AddReadVariable(UTcAdsVariable* Variable);
-	void AddWriteVariable(UTcAdsVariable* Variable);
-	void RemoveReadVariable(const UTcAdsVariable* Variable)
-	{ RemoveVariable(Variable, ReadVariableList, ReadReqBuffer_, ReadBufferSize_); } //, EAdsAccessType::Read); }
-	void RemoveWriteVariable(const UTcAdsVariable* Variable)
-	{ RemoveVariable(Variable, WriteVariableList, WriteReqBuffer_, WriteBufferSize_); } //, EAdsAccessType::Write); }
+	void addVariable(UTcAdsVariable* variable);
+	void removeVariable(const UTcAdsVariable* variable);
+//	{ RemoveVariable(Variable, ReadVariableList, ReadReqBuffer_, ReadBufferSize_); } //, EAdsAccessType::Read); }
+
+	// void AddReadVariable(UTcAdsVariable* Variable);
+	// void AddWriteVariable(UTcAdsVariable* Variable);
+	// void RemoveReadVariable(const UTcAdsVariable* Variable)
+	// { RemoveVariable(Variable, ReadVariableList, ReadReqBuffer_, ReadBufferSize_); } //, EAdsAccessType::Read); }
+	// void RemoveWriteVariable(const UTcAdsVariable* Variable)
+	// { RemoveVariable(Variable, WriteVariableList, WriteReqBuffer_, WriteBufferSize_); } //, EAdsAccessType::Write); }
 	
-	/*!
-	 * Intervals between calls to the plc to refresh data [s]
-	 */
+
+	// Intervals between calls to the plc to read data [s]. A value of <=0 disables communication
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time",
 		meta = (DisplayName = "Read Values Interval [s]"))
 	float ReadValuesInterval;
+	
+	// Intervals between calls to the plc to write data [s]. A value of <=0 disables communication
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time",
 		meta = (DisplayName = "Write Values Interval [s]"))
 	float WriteValuesInterval;

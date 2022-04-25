@@ -14,7 +14,7 @@ UTcAdsVariable::UTcAdsVariable() :
 	AdsMaster(nullptr),
 	DataType_(EAdsDataTypeId::ADST_VOID),
 	Size_(0),
-	NewVar_(true)
+	_newVar(true)
 	// SymbolEntry_({0, 0, 0, 0, 0, 0, 0, 0, 0})
 	// DataPar_({0,0,0})
 {
@@ -28,142 +28,144 @@ void UTcAdsVariable::BeginPlay()
 	// Insert ourselves in the list of variables
 	if (AdsMaster)
 	{
-		switch (Access)
-		{
-		// case EAdsAccessType::None:
+		AdsMaster->addVariable(this);
+		// switch (Access)
+		// {
+		// // case EAdsAccessType::None:
+		// // 	break;
+		// case EAdsAccessType::Read:
+		// 	AdsMaster->AddReadVariable(this);
 		// 	break;
-		case EAdsAccessType::Read:
-			AdsMaster->AddReadVariable(this);
-			break;
-		case EAdsAccessType::Write:
-			AdsMaster->AddWriteVariable(this);
-			break;
-		default:
-			break;
-		}
+		// case EAdsAccessType::Write:
+		// 	AdsMaster->AddWriteVariable(this);
+		// 	break;
+		// default:
+		// 	break;
+		// }
 	}
 }
 
-void UTcAdsVariable::EndPlay(const EEndPlayReason::Type EndPlayReason)
+void UTcAdsVariable::EndPlay(const EEndPlayReason::Type endPlayReason)
 {
-	Super::EndPlay(EndPlayReason);
+	Super::EndPlay(endPlayReason);
 
 	// Remove ourselves from the list
 	if (AdsMaster)
 	{
-		switch (Access)
-		{
-		// case EAdsAccessType::None:
-		// 	break;
-		case EAdsAccessType::Read:
-			AdsMaster->RemoveReadVariable(this);
-			break;
-		case EAdsAccessType::Write:
-			AdsMaster->RemoveWriteVariable(this);
-			break;
-		default:
-			break;
-		}
+		AdsMaster->removeVariable(this);
+	// 	switch (Access)
+	// 	{
+	// 	// case EAdsAccessType::None:
+	// 	// 	break;
+	// 	case EAdsAccessType::Read:
+	// 		AdsMaster->RemoveReadVariable(this);
+	// 		break;
+	// 	case EAdsAccessType::Write:
+	// 		AdsMaster->RemoveWriteVariable(this);
+	// 		break;
+	// 	default:
+	// 		break;
+	// 	}
 	}
 }
 
-void UTcAdsVariable::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+void UTcAdsVariable::TickComponent(float deltaTime, ELevelTick tickType, FActorComponentTickFunction* thisTickFunction)
 {
-	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	Super::TickComponent(deltaTime, tickType, thisTickFunction);
 }
 
-size_t UTcAdsVariable::TransferSize() const
+size_t UTcAdsVariable::transferSize() const
 {
 	switch (Access)
 	{
 	// case EAdsAccessType::None:
 	// 	break;
 	case EAdsAccessType::Read:
-		return ReadSize();
+		return readSize();
 	case EAdsAccessType::Write:
-		return WriteSize();
+		return writeSize();
 	default:
 		return 0;
 	}
 }
 
-uint32 UTcAdsVariable::GetSymbolEntryFromAds(int32 AdsPort, AmsAddr& AmsAddress, TArray<FDataPar>& Out)
+uint32 UTcAdsVariable::getSymbolEntryFromAds(const int32 adsPort, AmsAddr& amsAddress, TArray<FDataPar>& out)
 {
 	if (AdsName == TEXT(""))
 		return ADSERR_DEVICE_INVALIDPARM;
 	
-	FSimpleAsciiString VarName(AdsName);
-	unsigned long BytesRead;
-	AdsSymbolEntry SymbolEntry;
+	FSimpleAsciiString varName(AdsName);
+	unsigned long bytesRead;
+	AdsSymbolEntry symbolEntry;
 	
 	Error = AdsSyncReadWriteReqEx2(
-		AdsPort,
-		&AmsAddress,
+		adsPort,
+		&amsAddress,
 		ADSIGRP_SYM_INFOBYNAMEEX,
 		0,
-		sizeof(SymbolEntry),
-		&SymbolEntry,
-		VarName.ByteSize(),
-		VarName.GetData(),
-		&BytesRead
+		sizeof(symbolEntry),
+		&symbolEntry,
+		varName.byteSize(),
+		varName.getData(),
+		&bytesRead
 	);
 	
 	if (!Error)
 	{
 		ValidAds = true;
-		Size_ = SymbolEntry.size;
-		DataType_ = static_cast<EAdsDataTypeId>(SymbolEntry.dataType);
-		Out.Emplace(*reinterpret_cast<FDataPar*>(&SymbolEntry.iGroup));
+		Size_ = symbolEntry.size;
+		DataType_ = static_cast<EAdsDataTypeId>(symbolEntry.dataType);
+		out.Emplace(*reinterpret_cast<FDataPar*>(&symbolEntry.iGroup));
 	}
 
-	NewVar_ = false;
+	_newVar = false;
 	return Error;
 }
 
-size_t UTcAdsVariable::UnpackValues(const char* ErrorSrc, const char* ValueSrc, uint32 ErrorIn)
+size_t UTcAdsVariable::unpackValues(const char* errorSrc, const char* valueSrc, uint32 errorIn)
 {
-	if (ErrorIn)
+	if (errorIn)
 	{
-		Error = ErrorIn;
+		Error = errorIn;
 		return Size_;
 	}
 	else
 	{
-		Error = *reinterpret_cast<const uint32*>(ErrorSrc);
+		Error = *reinterpret_cast<const uint32*>(errorSrc);
 	}
 
 	switch (DataType_)
 	{
 		// case EAdsDataTypeId::ADST_VOID: // Invalid
 	case EAdsDataTypeId::ADST_INT8:
-		CopyCast<float, int8>(&Value, ValueSrc);
+		copyCast<float, int8>(&Value, valueSrc);
 		break;
 	case EAdsDataTypeId::ADST_UINT8:
-		CopyCast<float, uint8>(&Value, ValueSrc);
+		copyCast<float, uint8>(&Value, valueSrc);
 		break;
 	case EAdsDataTypeId::ADST_INT16:
-		CopyCast<float, int16>(&Value, ValueSrc);
+		copyCast<float, int16>(&Value, valueSrc);
 		break;
 	case EAdsDataTypeId::ADST_UINT16:
-		CopyCast<float, uint16>(&Value, ValueSrc);
+		copyCast<float, uint16>(&Value, valueSrc);
 		break;
 	case EAdsDataTypeId::ADST_INT32:
-		CopyCast<float, int32>(&Value, ValueSrc);
+		copyCast<float, int32>(&Value, valueSrc);
 		break;
 	case EAdsDataTypeId::ADST_UINT32:
-		CopyCast<float, uint32>(&Value, ValueSrc);
+		copyCast<float, uint32>(&Value, valueSrc);
 		break;
 	case EAdsDataTypeId::ADST_INT64:
-		CopyCast<float, int64>(&Value, ValueSrc);
+		copyCast<float, int64>(&Value, valueSrc);
 		break;
 	case EAdsDataTypeId::ADST_UINT64:
-		CopyCast<float, uint64>(&Value, ValueSrc);
+		copyCast<float, uint64>(&Value, valueSrc);
 		break;
 	case EAdsDataTypeId::ADST_REAL32: 
-		CopyCast<float, float>(&Value, ValueSrc);
+		copyCast<float, float>(&Value, valueSrc);
 		break;
 	case EAdsDataTypeId::ADST_REAL64:
-		CopyCast<float, double>(&Value, ValueSrc);
+		copyCast<float, double>(&Value, valueSrc);
 		break;
 		// case EAdsDataTypeId::ADST_STRING:	// Not supported
 		// case EAdsDataTypeId::ADST_WSTRING:	// Not supported
@@ -221,40 +223,40 @@ size_t UTcAdsVariable::UnpackValues(const char* ErrorSrc, const char* ValueSrc, 
 	return Size_;
 }
 
-size_t UTcAdsVariable::PackValues(char* ValueDst) const
+size_t UTcAdsVariable::packValues(char* valueDst) const
 {
 	switch (DataType_)
 	{
 		// case EAdsDataTypeId::ADST_VOID: // Invalid
 	case EAdsDataTypeId::ADST_INT8:
-		*reinterpret_cast<int8*>(ValueDst) = static_cast<int8>(Value);
+		*reinterpret_cast<int8*>(valueDst) = static_cast<int8>(Value);
 		break;
 	case EAdsDataTypeId::ADST_UINT8:
-		*reinterpret_cast<uint8*>(ValueDst) = static_cast<uint8>(Value);
+		*reinterpret_cast<uint8*>(valueDst) = static_cast<uint8>(Value);
 		break;
 	case EAdsDataTypeId::ADST_INT16:
-		*reinterpret_cast<int16*>(ValueDst) = static_cast<int16>(Value);
+		*reinterpret_cast<int16*>(valueDst) = static_cast<int16>(Value);
 		break;
 	case EAdsDataTypeId::ADST_UINT16:
-		*reinterpret_cast<uint16*>(ValueDst) = static_cast<uint16>(Value);
+		*reinterpret_cast<uint16*>(valueDst) = static_cast<uint16>(Value);
 		break;
 	case EAdsDataTypeId::ADST_INT32:
-		*reinterpret_cast<int32*>(ValueDst) = static_cast<int32>(Value);
+		*reinterpret_cast<int32*>(valueDst) = static_cast<int32>(Value);
 		break;
 	case EAdsDataTypeId::ADST_UINT32:
-		*reinterpret_cast<uint32*>(ValueDst) = static_cast<uint32>(Value);
+		*reinterpret_cast<uint32*>(valueDst) = static_cast<uint32>(Value);
 		break;
 	case EAdsDataTypeId::ADST_INT64:
-		*reinterpret_cast<int64*>(ValueDst) = static_cast<int64>(Value);
+		*reinterpret_cast<int64*>(valueDst) = static_cast<int64>(Value);
 		break;
 	case EAdsDataTypeId::ADST_UINT64:
-		*reinterpret_cast<uint64*>(ValueDst) = static_cast<uint64>(Value);
+		*reinterpret_cast<uint64*>(valueDst) = static_cast<uint64>(Value);
 		break;
 	case EAdsDataTypeId::ADST_REAL32: 
-		*reinterpret_cast<float*>(ValueDst) = static_cast<float>(Value);
+		*reinterpret_cast<float*>(valueDst) = static_cast<float>(Value);
 		break;
 	case EAdsDataTypeId::ADST_REAL64:
-		*reinterpret_cast<double*>(ValueDst) = static_cast<double>(Value);
+		*reinterpret_cast<double*>(valueDst) = static_cast<double>(Value);
 		break;
 		// case EAdsDataTypeId::ADST_STRING:	// Not supported
 		// case EAdsDataTypeId::ADST_WSTRING:	// Not supported

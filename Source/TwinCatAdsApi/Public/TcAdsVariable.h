@@ -17,18 +17,18 @@ class TWINCATADSAPI_API UTcAdsVariable : public UActorComponent // public UScene
 
 public:
 	UTcAdsVariable();
-	explicit UTcAdsVariable(ATcAdsMaster* Master) : UTcAdsVariable() { AdsMaster = Master; }
+	explicit UTcAdsVariable(ATcAdsMaster* master) : UTcAdsVariable() { AdsMaster = master; }
 
 protected:
 	virtual void BeginPlay() override;
-	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void EndPlay(const EEndPlayReason::Type endPlayReason) override;
 
 public:
-	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+	virtual void TickComponent(float deltaTime, ELevelTick tickType, FActorComponentTickFunction* thisTickFunction) override;
 
-	size_t TransferSize() const;
-	size_t ReadSize() const { return (Size_ + sizeof(uint32)); }
-	size_t WriteSize() const { return (Size_ + sizeof(FDataPar)); }
+	size_t transferSize() const;
+	size_t readSize() const { return (Size_ + sizeof(uint32)); }
+	size_t writeSize() const { return (Size_ + sizeof(FDataPar)); }
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ads Info")
 	FString AdsName;
@@ -47,7 +47,7 @@ public:
 	EAdsDataTypeId GetDataType() const { return DataType_; }
 	/*!
 	 * Blueprint friendly way to get ADS variable size. Incurs an additional cast since blueprint does not support
-	 * unsigned variables. If you are using c++ use \c Size instead.
+	 * unsigned variables. If you are using c++ use \c size instead.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Ads Info")
 	int64 GetSize() const { return Size_; }
@@ -55,19 +55,19 @@ public:
 	/*!
 	 * Get ADS variable size
 	 */
-	uint32 Size() const { return Size_; }
+	uint32 size() const { return Size_; }
 	/*!
 	 * Contact the plc to get variable information for ADS (this is done automatically by TcAdsMaster)
 	 */
-	uint32 GetSymbolEntryFromAds(int32 AdsPort, AmsAddr& AmsAddress, TArray<FDataPar>& Out);
+	uint32 getSymbolEntryFromAds(int32 adsPort, AmsAddr& amsAddress, TArray<FDataPar>& out);
 
-	bool NewVar() const { return NewVar_; }
+	bool newVar() const { return _newVar; }
 
 	template <class TDst, class TSrc>
-	static void CopyCast(void* Dst, const void* Src);
+	static void copyCast(void* dst, const void* src);
 
-	size_t UnpackValues(const char* ErrorSrc, const char* ValueSrc, uint32 ErrorIn);
-	size_t PackValues(char* ValueDst) const;
+	size_t unpackValues(const char* errorSrc, const char* valueSrc, uint32 errorIn);
+	size_t packValues(char* valueDst) const;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ads Info")
 	ATcAdsMaster* AdsMaster;
@@ -80,15 +80,15 @@ private:
 	UPROPERTY(VisibleAnywhere, Category = "Ads Info")
 	uint32 Size_;
 
-	bool NewVar_;
+	bool _newVar;
 };
 
 template <class TDst, class TSrc>
-void UTcAdsVariable::CopyCast(void* Dst, const void* Src)
+void UTcAdsVariable::copyCast(void* dst, const void* src)
 {
 	// TDst* dst = Dst;
 	// TSrc* src = Src;
 	// *dst = static_cast<TDst>(*src);
 
-	*static_cast<TDst*>(Dst) = static_cast<TDst>(*static_cast<const TSrc*>(Src));
+	*static_cast<TDst*>(dst) = static_cast<TDst>(*static_cast<const TSrc*>(src));
 }
