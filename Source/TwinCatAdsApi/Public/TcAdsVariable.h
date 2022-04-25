@@ -60,6 +60,7 @@ public:
 	 * Contact the plc to get variable information for ADS (this is done automatically by TcAdsMaster)
 	 */
 	uint32 getSymbolEntryFromAds(int32 adsPort, AmsAddr& amsAddress, TArray<FDataPar>& out);
+	int32 setupCallback(int32 adsPort, AmsAddr& amsAddr, ULONG& handle);
 
 	bool newVar() const { return _newVar; }
 
@@ -67,6 +68,7 @@ public:
 	static void copyCast(void* dst, const void* src);
 
 	size_t unpackValues(const char* errorSrc, const char* valueSrc, uint32 errorIn);
+	size_t unpackFromCallback(AdsNotificationHeader* pNotification);
 	size_t packValues(char* valueDst) const;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ads Info")

@@ -27,22 +27,8 @@ void UTcAdsVariable::BeginPlay()
 
 	// Insert ourselves in the list of variables
 	if (AdsMaster)
-	{
 		AdsMaster->addVariable(this);
-		// switch (Access)
-		// {
-		// // case EAdsAccessType::None:
-		// // 	break;
-		// case EAdsAccessType::Read:
-		// 	AdsMaster->AddReadVariable(this);
-		// 	break;
-		// case EAdsAccessType::Write:
-		// 	AdsMaster->AddWriteVariable(this);
-		// 	break;
-		// default:
-		// 	break;
-		// }
-	}
+
 }
 
 void UTcAdsVariable::EndPlay(const EEndPlayReason::Type endPlayReason)
@@ -51,22 +37,8 @@ void UTcAdsVariable::EndPlay(const EEndPlayReason::Type endPlayReason)
 
 	// Remove ourselves from the list
 	if (AdsMaster)
-	{
 		AdsMaster->removeVariable(this);
-	// 	switch (Access)
-	// 	{
-	// 	// case EAdsAccessType::None:
-	// 	// 	break;
-	// 	case EAdsAccessType::Read:
-	// 		AdsMaster->RemoveReadVariable(this);
-	// 		break;
-	// 	case EAdsAccessType::Write:
-	// 		AdsMaster->RemoveWriteVariable(this);
-	// 		break;
-	// 	default:
-	// 		break;
-	// 	}
-	}
+	
 }
 
 void UTcAdsVariable::TickComponent(float deltaTime, ELevelTick tickType, FActorComponentTickFunction* thisTickFunction)
@@ -120,6 +92,12 @@ uint32 UTcAdsVariable::getSymbolEntryFromAds(const int32 adsPort, AmsAddr& amsAd
 
 	_newVar = false;
 	return Error;
+}
+
+int32 UTcAdsVariable::setupCallback(int32 adsPort, AmsAddr& amsAddr, ULONG& handle)
+{
+	
+	return 0;
 }
 
 size_t UTcAdsVariable::unpackValues(const char* errorSrc, const char* valueSrc, uint32 errorIn)
@@ -177,50 +155,12 @@ size_t UTcAdsVariable::unpackValues(const char* errorSrc, const char* valueSrc, 
 			break;
 	}
 	
-	// switch (DataType_)
-	// {
-	// 	// case EAdsDataTypeId::ADST_VOID: // Invalid
-	// case EAdsDataTypeId::ADST_INT8:
-	// 	Value = *reinterpret_cast<const int8*>(ValueSrc);
-	// 	break;
-	// case EAdsDataTypeId::ADST_UINT8:
-	// 	Value = *reinterpret_cast<const uint8*>(ValueSrc);
-	// 	break;
-	// case EAdsDataTypeId::ADST_INT16:
-	// 	Value = *reinterpret_cast<const int16*>(ValueSrc);
-	// 	break;
-	// case EAdsDataTypeId::ADST_UINT16:
-	// 	Value = *reinterpret_cast<const uint16*>(ValueSrc);
-	// 	break;
-	// case EAdsDataTypeId::ADST_INT32:
-	// 	Value = *reinterpret_cast<const int32*>(ValueSrc);
-	// 	break;
-	// case EAdsDataTypeId::ADST_UINT32:
-	// 	Value = *reinterpret_cast<const uint32*>(ValueSrc);
-	// 	break;
-	// case EAdsDataTypeId::ADST_INT64:
-	// 	Value = *reinterpret_cast<const int64*>(ValueSrc);
-	// 	break;
-	// case EAdsDataTypeId::ADST_UINT64:
-	// 	Value = *reinterpret_cast<const uint64*>(ValueSrc);
-	// 	break;
-	// case EAdsDataTypeId::ADST_REAL32: 
-	// 	Value = *reinterpret_cast<const float*>(ValueSrc);
-	// 	break;
-	// case EAdsDataTypeId::ADST_REAL64:
-	// 	Value = *reinterpret_cast<const double*>(ValueSrc);
-	// 	break;
-	// 	// case EAdsDataTypeId::ADST_STRING:	// Not supported
-	// 	// case EAdsDataTypeId::ADST_WSTRING:	// Not supported
-	// 	// case EAdsDataTypeId::ADST_REAL80:	// Not supported
-	// 	// case EAdsDataTypeId::ADST_BIT:		// Not supported
-	// 	// case EAdsDataTypeId::ADST_BIGTYPE:	// Not supported
-	// 	// case EAdsDataTypeId::ADST_MAXTYPES:	// Not supported
-	// 	default:
-	// 		break;
-	// }
-	
 	return Size_;
+}
+
+size_t UTcAdsVariable::unpackFromCallback(AdsNotificationHeader* pNotification)
+{
+	return 0;
 }
 
 size_t UTcAdsVariable::packValues(char* valueDst) const

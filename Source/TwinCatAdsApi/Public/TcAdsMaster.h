@@ -6,6 +6,7 @@
 #include "GameFramework/Actor.h"
 #include "TcAdsDef.h"
 #include "TcAdsApiTypes.h"
+#include "TcAdsVariable.h"
 #include "TcAdsMaster.generated.h"
 
 UCLASS()
@@ -32,17 +33,26 @@ protected:
 	AmsAddr _remoteAmsAddress;
 	FTimerHandle _readValuesTimerHandle;
 	FTimerHandle _writeValuesTimerHandle;
+	FTimerHandle _updateListsTimerHandle;
 
 	TArray<FDataPar> _readReqBuffer;
 	size_t _readBufferSize;
 	TArray<FDataPar> _writeReqBuffer;
 	size_t _writeBufferSize;
 
-	void checkForNewVars(TArray<UTcAdsVariable*>& vars, TArray<FDataPar>& reqBuffer, size_t& bufferSize); //, EAdsAccessType Acess);
+	void updateVarLists();
+	void checkForNewVars(TArray<UTcAdsVariable*>& vars, TArray<FDataPar>& reqBuffer, size_t& bufferSize);
+	void checkForCallbackVars();
 	static bool parseAmsAddress(const FString& netId, int32 port, AmsAddr& out);
 
 	static void removeVariablePrivate(const UTcAdsVariable* variable, TArray<UTcAdsVariable*>& variableList,
 		TArray<FDataPar> reqBuffer, size_t& bufferSize);
+
+	static void removeCallbackVariable(const UTcAdsVariable* variable);
+	
+	static void __stdcall ReadCallback(AmsAddr* pAddr, AdsNotificationHeader* pNotification, ULONG hUser);
+
+	static TArray<TcAdsCallbackStruct> _CallbackList;
 	
 public:	
 	// Called every frame
@@ -50,16 +60,7 @@ public:
 	
 	void addVariable(UTcAdsVariable* variable);
 	void removeVariable(const UTcAdsVariable* variable);
-//	{ RemoveVariable(Variable, ReadVariableList, ReadReqBuffer_, ReadBufferSize_); } //, EAdsAccessType::Read); }
-
-	// void AddReadVariable(UTcAdsVariable* Variable);
-	// void AddWriteVariable(UTcAdsVariable* Variable);
-	// void RemoveReadVariable(const UTcAdsVariable* Variable)
-	// { RemoveVariable(Variable, ReadVariableList, ReadReqBuffer_, ReadBufferSize_); } //, EAdsAccessType::Read); }
-	// void RemoveWriteVariable(const UTcAdsVariable* Variable)
-	// { RemoveVariable(Variable, WriteVariableList, WriteReqBuffer_, WriteBufferSize_); } //, EAdsAccessType::Write); }
 	
-
 	// Intervals between calls to the plc to read data [s]. A value of <=0 disables communication
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time",
 		meta = (DisplayName = "Read Values Interval [s]"))
@@ -72,6 +73,11 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Time",
 		meta = (DisplayName = "Read Data Round Trip Time [ms]"))
 	float ReadDataRoundTripTime;
+	// Interval between checking for new variables
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time",
+		meta = (DisplayName = "Update Variable Lists Interval [s]"))
+	float UpdateListsInterval;
+	
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, EditFixedSize, Category = "Remote ADS Info")
 	FString RemoteAmsNetId;

@@ -14,6 +14,7 @@ ATcAdsMaster::ATcAdsMaster() :
 	ReadValuesInterval(0.1f),
 	WriteValuesInterval(0.1f),
 	ReadDataRoundTripTime(0.0f),
+	UpdateListsInterval(10.0f),
 	RemoteAmsNetId(TEXT("127.0.0.1.1.1")),
 	RemoteAmsPort(851),
 	RemoteAmsAddressValid(false)
@@ -25,6 +26,8 @@ ATcAdsMaster::ATcAdsMaster() :
 		GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Green,TEXT("Ads master loaded"));
 
 }
+
+TArray<TcAdsCallbackStruct> ATcAdsMaster::_CallbackList;
 
 // Called when the game starts or when spawned
 void ATcAdsMaster::BeginPlay()
@@ -131,6 +134,9 @@ void ATcAdsMaster::BeginPlay()
 
 	if (WriteValuesInterval > 0.0f)
 		GetWorldTimerManager().SetTimer(_writeValuesTimerHandle,this, &ATcAdsMaster::writeValues, WriteValuesInterval, true);
+
+	if (UpdateListsInterval > 0.0f)
+		GetWorldTimerManager().SetTimer(_updateListsTimerHandle, this, &ATcAdsMaster::updateVarLists, UpdateListsInterval, true);
 }
 
 void ATcAdsMaster::EndPlay(const EEndPlayReason::Type endPlayReason)
@@ -140,6 +146,7 @@ void ATcAdsMaster::EndPlay(const EEndPlayReason::Type endPlayReason)
 	// Stop timers
 	GetWorldTimerManager().ClearTimer(_readValuesTimerHandle);
 	GetWorldTimerManager().ClearTimer(_writeValuesTimerHandle);
+	GetWorldTimerManager().ClearTimer(_updateListsTimerHandle);
 
 	/// Seems like we don't need to release handles, since we are actually using the index group and offset to access
 	/// variables, and therefore handles are not created for us. Might be wrong though, the documentation isn't exactly
@@ -173,11 +180,24 @@ void ATcAdsMaster::removeVariable(const UTcAdsVariable* variable) // const UTcAd
 	case EAdsAccessType::Write:
 		removeVariablePrivate(variable, WriteVariableList, _writeReqBuffer, _writeBufferSize);
 		break;
-	case EAdsAccessType::ReadCyclic: break;
+	case EAdsAccessType::ReadCyclic:
+		break;
 	case EAdsAccessType::ReadOnChange: break;
 	case EAdsAccessType::WriteOnChange: break;
 	default: ;
 	}
+}
+
+void ATcAdsMaster::updateVarLists()
+{
+	// Update read list
+	checkForNewVars(ReadVariableList, _readReqBuffer, _readBufferSize);
+
+	// Update write list
+	checkForNewVars(WriteVariableList, _writeReqBuffer, _writeBufferSize);
+
+	// Update callback list
+	checkForCallbackVars();
 }
 
 void ATcAdsMaster::checkForNewVars(TArray<UTcAdsVariable*>& vars, TArray<FDataPar>& reqBuffer, size_t& bufferSize) //, EAdsAccessType Access)
@@ -237,6 +257,63 @@ void ATcAdsMaster::checkForNewVars(TArray<UTcAdsVariable*>& vars, TArray<FDataPa
 						AdsAccessTypeName(vars[i]->Access),
 						*vars[i]->AdsName
 						));
+			}
+		}
+	}
+}
+
+void ATcAdsMaster::checkForCallbackVars()
+{
+	// Check for new variables in the list. Since new variables are always added at the end, we check in reverse
+	// (so that normally we will check the first entry and immediately step out).
+	bool newVar = false;
+	int32 newIndex = 0;
+	for (auto i = _CallbackList.Num(); i--;)
+	{
+		// Skip variables that are pending kill (this shouldn't happen, but you never know with unreal...)
+		if (!IsValid(_CallbackList[i].variable))
+			continue;
+		
+		if (_CallbackList[i].variable->newVar())
+		{
+			newVar = true;
+			newIndex = i;
+		}
+		else
+			break;
+	}
+
+	// Nothing to do
+	if (!newVar)
+		return;
+	
+	for (auto i = newIndex; i < _CallbackList.Num(); ++i)
+	{
+		// Skip variables that are pending kill again
+		if (!IsValid(_CallbackList[i].variable))
+			continue;
+
+		auto err = _CallbackList[i].variable->setupCallback(AdsPort, _remoteAmsAddress, _CallbackList[i].handle);
+		if (GEngine)
+		{
+			if (err)
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Yellow,
+					FString::Printf(TEXT("Failed to add callback for '%s' variable '%s'. Error code 0x%x"),
+						AdsAccessTypeName(_CallbackList[i].variable->Access),
+						*_CallbackList[i].variable->AdsName,
+						err
+					)
+				);
+			}
+			else
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Green,
+					FString::Printf(TEXT("Successfully added callback for '%s' variable '%s'"),
+						AdsAccessTypeName(_CallbackList[i].variable->Access),
+						*_CallbackList[i].variable->AdsName
+					)
+				);
 			}
 		}
 	}
@@ -302,6 +379,26 @@ void ATcAdsMaster::removeVariablePrivate(const UTcAdsVariable* variable, TArray<
 	}
 }
 
+void ATcAdsMaster::removeCallbackVariable(const UTcAdsVariable* variable)
+{
+	// auto idx = _CallbackList.IndexOfByKey(variable);
+}
+
+void ATcAdsMaster::ReadCallback(AmsAddr* pAddr, AdsNotificationHeader* pNotification, ULONG hUser)
+{
+	for (auto& callback : _CallbackList)
+	{
+		if (callback.variable == nullptr)
+			continue;
+		
+		if (callback.handle == hUser)
+		{
+			callback.variable->unpackFromCallback(pNotification);
+			return;
+		}
+	}
+}
+
 // Called every frame
 void ATcAdsMaster::Tick(float deltaTime)
 {
@@ -323,7 +420,9 @@ void ATcAdsMaster::addVariable(UTcAdsVariable* variable)
 	case EAdsAccessType::Write:
 		WriteVariableList.Add(variable);
 		break;
-	case EAdsAccessType::ReadCyclic: break;
+	case EAdsAccessType::ReadCyclic:
+		// _CallbackList.Emplace(this);
+		break;
 	case EAdsAccessType::ReadOnChange: break;
 	case EAdsAccessType::WriteOnChange: break;
 	default: ;
@@ -345,7 +444,7 @@ void ATcAdsMaster::addVariable(UTcAdsVariable* variable)
 
 void ATcAdsMaster::readValues()
 {
-	checkForNewVars(ReadVariableList, _readReqBuffer, _readBufferSize); //, EAdsAccessType::Read);
+	// checkForNewVars(ReadVariableList, _readReqBuffer, _readBufferSize); //, EAdsAccessType::Read);
 	
 	// Nothing to do
 	if (_readReqBuffer.Num() == 0)
@@ -393,7 +492,7 @@ void ATcAdsMaster::readValues()
 
 void ATcAdsMaster::writeValues()
 {
-	checkForNewVars(WriteVariableList, _writeReqBuffer, _writeBufferSize); //, EAdsAccessType::Write);
+	// checkForNewVars(WriteVariableList, _writeReqBuffer, _writeBufferSize); //, EAdsAccessType::Write);
 
 	// Nothing to do
 	if (_writeReqBuffer.Num() == 0)
