@@ -1,5 +1,6 @@
 ﻿
 #pragma once
+// #include "TcAdsVariable.h"
 
 // Needed for USTRUCT()
 // #include "CoreMinimal.h"
@@ -117,9 +118,9 @@ enum class EAdsAccessType : uint8
 	Read  UMETA(DisplayName = "Read"),
 	// Write on local cycle
 	Write  UMETA(DisplayName = "Write"),
-	// Read on remote cycle [not implemented]
+	// Read on remote cycle [experimental]
 	ReadCyclic  UMETA(DisplayName = "Read Cyclic"),
-	// Read on change [not implemented]
+	// Read on change [experimental]
 	ReadOnChange  UMETA(DisplayName = "Read On Change"),
 	// Write on change [not implemented]
 	WriteOnChange  UMETA(DisplayName = "Write On Change")
@@ -235,8 +236,15 @@ public:
 
 struct TcAdsCallbackStruct
 {
-	explicit TcAdsCallbackStruct(UTcAdsVariable* pVar = nullptr) : variable(pVar), handle(0) {}
+	explicit TcAdsCallbackStruct(UTcAdsVariable* pVar = nullptr) : variable(pVar), hUser(0), hNotification(0) {}
 
 	UTcAdsVariable* variable;
-	ULONG handle;
+	ULONG hUser;
+	ULONG hNotification;
+
+	bool operator ==(const UTcAdsVariable* other) const { return (other == variable);}
+	bool operator !=(const UTcAdsVariable* other) const { return (other != variable);}
 };
+
+// Create custom UE log category
+DECLARE_LOG_CATEGORY_EXTERN(LogTcAds, Display, Log);

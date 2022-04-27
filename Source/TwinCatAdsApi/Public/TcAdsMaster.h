@@ -18,13 +18,18 @@ public:
 	// Sets default values for this actor's properties
 	ATcAdsMaster();
 
+	/*!
+	 * Checks if port is open. Attempts to open port if it is not
+	 * @return -1 if port open failed, port number if succeeded
+	 */
+	int32 openPort();
+	void closePort();
 	void readValues();
 	void writeValues();
 
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
-	
 	virtual void EndPlay(const EEndPlayReason::Type endPlayReason) override;
 	
 	// static void RemoveVariable(const UTcAdsVariable* Variable, TArray<UTcAdsVariable*>& VarList,
@@ -33,33 +38,35 @@ protected:
 	AmsAddr _remoteAmsAddress;
 	FTimerHandle _readValuesTimerHandle;
 	FTimerHandle _writeValuesTimerHandle;
-	FTimerHandle _updateListsTimerHandle;
+	// FTimerHandle _updateListsTimerHandle;
 
 	TArray<FDataPar> _readReqBuffer;
 	size_t _readBufferSize;
 	TArray<FDataPar> _writeReqBuffer;
 	size_t _writeBufferSize;
-
-	void updateVarLists();
-	void checkForNewVars(TArray<UTcAdsVariable*>& vars, TArray<FDataPar>& reqBuffer, size_t& bufferSize);
-	void checkForCallbackVars();
+	
+//	void updateVarLists();
+//	void checkForNewVars(TArray<UTcAdsVariable*>& vars, TArray<FDataPar>& reqBuffer, size_t& bufferSize);
+//	void checkForCallbackVars();
 	static bool parseAmsAddress(const FString& netId, int32 port, AmsAddr& out);
 
 	static void removeVariablePrivate(const UTcAdsVariable* variable, TArray<UTcAdsVariable*>& variableList,
 		TArray<FDataPar> reqBuffer, size_t& bufferSize);
 
-	static void removeCallbackVariable(const UTcAdsVariable* variable);
-	
-	static void __stdcall ReadCallback(AmsAddr* pAddr, AdsNotificationHeader* pNotification, ULONG hUser);
+	void removeCallbackVariable(UTcAdsVariable* variable);
 
 	static TArray<TcAdsCallbackStruct> _CallbackList;
+
+	static uint32 _ActiveMasters;
 	
 public:	
 	// Called every frame
 	virtual void Tick(float deltaTime) override;
 	
 	void addVariable(UTcAdsVariable* variable);
-	void removeVariable(const UTcAdsVariable* variable);
+	void removeVariable(UTcAdsVariable* variable);
+
+	static void __stdcall ReadCallback(AmsAddr* pAddr, AdsNotificationHeader* pNotification, ULONG hUser);
 	
 	// Intervals between calls to the plc to read data [s]. A value of <=0 disables communication
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time",
@@ -74,9 +81,9 @@ public:
 		meta = (DisplayName = "Read Data Round Trip Time [ms]"))
 	float ReadDataRoundTripTime;
 	// Interval between checking for new variables
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time",
-		meta = (DisplayName = "Update Variable Lists Interval [s]"))
-	float UpdateListsInterval;
+	// UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time",
+	// 	meta = (DisplayName = "Update Variable Lists Interval [s]"))
+	// float UpdateListsInterval;
 	
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, EditFixedSize, Category = "Remote ADS Info")

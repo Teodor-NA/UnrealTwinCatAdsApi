@@ -23,12 +23,19 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type endPlayReason) override;
 
+	int32 getHandle(int32 adsPort, AmsAddr* pAmsAddr, ULONG& handle);
+	int32 releaseHandle(int32 adsPort, AmsAddr* pAmsAddr, ULONG& handle);
+	int32 setCallback(int32 adsPort, AmsAddr* amsAddr, ADSTRANSMODE adsTransMode, TcAdsCallbackStruct& callbackStruct);
+	int32 releaseCallback(int32 adsPort, AmsAddr* amsAddr, TcAdsCallbackStruct& callbackStruct);
+
 public:
 	virtual void TickComponent(float deltaTime, ELevelTick tickType, FActorComponentTickFunction* thisTickFunction) override;
 
 	size_t transferSize() const;
 	size_t readSize() const { return (Size_ + sizeof(uint32)); }
 	size_t writeSize() const { return (Size_ + sizeof(FDataPar)); }
+
+	void release();
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ads Info")
 	FString AdsName;
@@ -37,7 +44,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ads Info")
 	float Value;
 	UPROPERTY(VisibleAnywhere, Category = "Ads Info")
-	uint32 Error;
+	int32 Error;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ads Info")
 	bool ValidAds;
 	
@@ -58,18 +65,22 @@ public:
 	uint32 size() const { return Size_; }
 	/*!
 	 * Contact the plc to get variable information for ADS (this is done automatically by TcAdsMaster)
+	 * @param adsPort [in] An open ads port
+	 * @param amsAddress [in] Ams address to remote machine
+	 * @param dataEntries [opt][in/out] Array of data entries for ADS-SUM commands
+	 * @param bufferSize [opt][in/out] Buffer size for ADS-SUM commands
+	 * @return Ads error code
 	 */
-	uint32 getSymbolEntryFromAds(int32 adsPort, AmsAddr& amsAddress, TArray<FDataPar>& out);
-	int32 setupCallback(int32 adsPort, AmsAddr& amsAddr, ULONG& handle);
-
-	bool newVar() const { return _newVar; }
-
+	uint32 getSymbolEntryFromAds(int32 adsPort, AmsAddr* amsAddress, TArray<FDataPar>* dataEntries = nullptr, size_t* bufferSize = nullptr);
+	int32 setupCallbackVariable(int32 adsPort, AmsAddr* amsAddr, ADSTRANSMODE adsTransMode, TcAdsCallbackStruct& callbackStruct);
+	int32 terminateCallbackVariable(int32 adsPort, AmsAddr* amsAddr, TcAdsCallbackStruct& callbackStruct);
+	
 	template <class TDst, class TSrc>
-	static void copyCast(void* dst, const void* src);
+	static void CopyCast(void* pDst, const void* pSrc);
 
-	size_t unpackValues(const char* errorSrc, const char* valueSrc, uint32 errorIn);
-	size_t unpackFromCallback(AdsNotificationHeader* pNotification);
-	size_t packValues(char* valueDst) const;
+	size_t unpackValue(const char* errorSrc, const char* valueSrc, uint32 errorIn);
+	size_t unpackValue(const char* valueSrc);
+	size_t packValue(char* valueDst) const;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ads Info")
 	ATcAdsMaster* AdsMaster;
@@ -81,16 +92,14 @@ private:
 
 	UPROPERTY(VisibleAnywhere, Category = "Ads Info")
 	uint32 Size_;
-
-	bool _newVar;
 };
 
 template <class TDst, class TSrc>
-void UTcAdsVariable::copyCast(void* dst, const void* src)
+void UTcAdsVariable::CopyCast(void* pDst, const void* pSrc)
 {
-	// TDst* dst = Dst;
-	// TSrc* src = Src;
+	// TDst* dst = pDst;
+	// TSrc* src = pSrc;
 	// *dst = static_cast<TDst>(*src);
 
-	*static_cast<TDst*>(dst) = static_cast<TDst>(*static_cast<const TSrc*>(src));
+	*static_cast<TDst*>(pDst) = static_cast<TDst>(*static_cast<const TSrc*>(pSrc));
 }

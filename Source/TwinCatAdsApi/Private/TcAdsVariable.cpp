@@ -13,8 +13,7 @@ UTcAdsVariable::UTcAdsVariable() :
 	ValidAds(false),
 	AdsMaster(nullptr),
 	DataType_(EAdsDataTypeId::ADST_VOID),
-	Size_(0),
-	_newVar(true)
+	Size_(0)
 	// SymbolEntry_({0, 0, 0, 0, 0, 0, 0, 0, 0})
 	// DataPar_({0,0,0})
 {
@@ -26,7 +25,7 @@ void UTcAdsVariable::BeginPlay()
 	Super::BeginPlay();
 
 	// Insert ourselves in the list of variables
-	if (AdsMaster)
+	if (IsValid(AdsMaster))
 		AdsMaster->addVariable(this);
 
 }
@@ -35,10 +34,80 @@ void UTcAdsVariable::EndPlay(const EEndPlayReason::Type endPlayReason)
 {
 	Super::EndPlay(endPlayReason);
 
-	// Remove ourselves from the list
-	if (AdsMaster)
-		AdsMaster->removeVariable(this);
-	
+	release();	
+}
+
+int32 UTcAdsVariable::getHandle(int32 adsPort, AmsAddr* pAmsAddr, ULONG& handle)
+{
+	FSimpleAsciiString varName(AdsName);
+	unsigned long bytesRead;
+	Error = AdsSyncReadWriteReqEx2(
+		adsPort,
+		pAmsAddr,
+		ADSIGRP_SYM_HNDBYNAME,
+		0x0,
+		sizeof(handle),
+		&handle,
+		varName.byteSize(),
+		varName.getData(),
+		&bytesRead
+	);
+
+	return Error;
+}
+
+int32 UTcAdsVariable::releaseHandle(int32 adsPort, AmsAddr* pAmsAddr, ULONG& handle)
+{
+	Error = AdsSyncWriteReqEx(
+		adsPort,
+		pAmsAddr,
+		ADSIGRP_SYM_RELEASEHND,
+		0,
+		sizeof(handle),
+		&handle
+	);
+
+	handle = 0;
+
+	return Error;
+}
+
+int32 UTcAdsVariable::setCallback(int32 adsPort, AmsAddr* amsAddr, ADSTRANSMODE adsTransMode,
+	TcAdsCallbackStruct& callbackStruct)
+{
+	AdsNotificationAttrib notificationAttrib = {
+		Size_,
+		adsTransMode,
+		0,
+		 static_cast<unsigned long>(AdsMaster->ReadValuesInterval*10000000.0f)
+	};
+
+	// Setup callback
+	Error = AdsSyncAddDeviceNotificationReqEx(
+		adsPort,
+		amsAddr,
+		ADSIGRP_SYM_VALBYHND,
+		callbackStruct.hUser,
+		&notificationAttrib,
+		&ATcAdsMaster::ReadCallback,
+		callbackStruct.hUser,
+		&callbackStruct.hNotification
+	);
+
+	return Error;
+}
+
+int32 UTcAdsVariable::releaseCallback(int32 adsPort, AmsAddr* amsAddr, TcAdsCallbackStruct& callbackStruct)
+{
+	Error = AdsSyncDelDeviceNotificationReqEx(
+		adsPort,
+		amsAddr,
+		callbackStruct.hNotification
+	);
+
+	callbackStruct.hNotification = 0;
+
+	return Error;
 }
 
 void UTcAdsVariable::TickComponent(float deltaTime, ELevelTick tickType, FActorComponentTickFunction* thisTickFunction)
@@ -50,18 +119,31 @@ size_t UTcAdsVariable::transferSize() const
 {
 	switch (Access)
 	{
-	// case EAdsAccessType::None:
-	// 	break;
+//	case EAdsAccessType::None: break;
 	case EAdsAccessType::Read:
 		return readSize();
 	case EAdsAccessType::Write:
 		return writeSize();
-	default:
-		return 0;
+//	case EAdsAccessType::ReadCyclic: break;
+//	case EAdsAccessType::ReadOnChange: break;
+//	case EAdsAccessType::WriteOnChange: break;
+	default: ;
 	}
+
+	return 0;
 }
 
-uint32 UTcAdsVariable::getSymbolEntryFromAds(const int32 adsPort, AmsAddr& amsAddress, TArray<FDataPar>& out)
+void UTcAdsVariable::release()
+{
+	if (IsValid(AdsMaster))
+	{
+		AdsMaster->removeVariable(this);
+	}
+
+	ValidAds = false;
+}
+
+uint32 UTcAdsVariable::getSymbolEntryFromAds(const int32 adsPort, AmsAddr* amsAddress, TArray<FDataPar>* dataEntries, size_t* bufferSize)
 {
 	if (AdsName == TEXT(""))
 		return ADSERR_DEVICE_INVALIDPARM;
@@ -72,7 +154,7 @@ uint32 UTcAdsVariable::getSymbolEntryFromAds(const int32 adsPort, AmsAddr& amsAd
 	
 	Error = AdsSyncReadWriteReqEx2(
 		adsPort,
-		&amsAddress,
+		amsAddress,
 		ADSIGRP_SYM_INFOBYNAMEEX,
 		0,
 		sizeof(symbolEntry),
@@ -87,63 +169,159 @@ uint32 UTcAdsVariable::getSymbolEntryFromAds(const int32 adsPort, AmsAddr& amsAd
 		ValidAds = true;
 		Size_ = symbolEntry.size;
 		DataType_ = static_cast<EAdsDataTypeId>(symbolEntry.dataType);
-		out.Emplace(*reinterpret_cast<FDataPar*>(&symbolEntry.iGroup));
+
+		if (dataEntries)
+			dataEntries->Emplace(*reinterpret_cast<FDataPar*>(&symbolEntry.iGroup));
+
+		if (bufferSize)
+			*bufferSize += transferSize();
+
 	}
 
-	_newVar = false;
 	return Error;
 }
 
-int32 UTcAdsVariable::setupCallback(int32 adsPort, AmsAddr& amsAddr, ULONG& handle)
+int32 UTcAdsVariable::setupCallbackVariable(int32 adsPort, AmsAddr* amsAddr, ADSTRANSMODE adsTransMode, TcAdsCallbackStruct& callbackStruct)
 {
+	ValidAds = false;
+	
+	// Get handle
+	getHandle(adsPort, amsAddr, callbackStruct.hUser);
+
+	if (Error)
+	{
+		UE_LOG(LogTcAds, Error,
+			TEXT("Failed to get handle for '%s' variable '%s'. Error code: 0x%x"),
+			AdsAccessTypeName(Access),
+			*AdsName,
+			Error
+		);
+		
+		return Error;
+	}
+
+	setCallback(adsPort, amsAddr, adsTransMode, callbackStruct);
+
+	if (Error)
+	{
+		UE_LOG(LogTcAds, Error,
+			TEXT("Failed to set up callback for '%s' variable '%s'. Error code 0x%x"),
+			AdsAccessTypeName(Access),
+			*AdsName,
+			Error
+		);
+		
+		// Attempt to release handle
+		Error = releaseHandle(adsPort, amsAddr, callbackStruct.hUser);
+		
+		return Error;
+	}
+
+	UE_LOG(LogTcAds, Display,
+		TEXT("Successfully set up callback for '%s' variable '%s'"),
+		AdsAccessTypeName(Access),
+		*AdsName
+	);
+
+	ValidAds = true;
 	
 	return 0;
 }
 
-size_t UTcAdsVariable::unpackValues(const char* errorSrc, const char* valueSrc, uint32 errorIn)
+int32 UTcAdsVariable::terminateCallbackVariable(int32 adsPort, AmsAddr* amsAddr, TcAdsCallbackStruct& callbackStruct)
+{
+	// Release callback
+	releaseCallback(adsPort, amsAddr, callbackStruct);
+
+	if (Error)
+	{
+		UE_LOG(LogTcAds, Error,
+		   TEXT("Failed to delete callback notification for '%s' variable '%s'. Error code: 0x%x"),
+		   AdsAccessTypeName(Access),
+		   *AdsName,
+		   Error
+	   );
+	}
+	else
+	{
+		UE_LOG(LogTcAds, Display,
+			TEXT("Deleted callback notification for '%s' variable '%s'"),
+			AdsAccessTypeName(Access),
+			*AdsName
+		);
+	 }
+	
+	// Release handle
+	releaseHandle(adsPort, amsAddr, callbackStruct.hUser);
+
+	if (Error)
+	{
+		UE_LOG(LogTcAds, Error,
+		   TEXT("Failed to release handle for '%s' variable '%s'. Error code: 0x%x"),
+		   AdsAccessTypeName(Access),
+		   *AdsName,
+		   Error
+	   );
+	}
+	else
+	{
+		UE_LOG(LogTcAds, Display,
+			TEXT("Released handle for '%s' variable '%s'"),
+			AdsAccessTypeName(Access),
+			*AdsName
+		);
+	}
+
+	return Error;
+}
+
+size_t UTcAdsVariable::unpackValue(const char* errorSrc, const char* valueSrc, uint32 errorIn)
 {
 	if (errorIn)
 	{
 		Error = errorIn;
 		return Size_;
 	}
-	else
-	{
-		Error = *reinterpret_cast<const uint32*>(errorSrc);
-	}
 
+	Error = *reinterpret_cast<const uint32*>(errorSrc);
+
+	return unpackValue(valueSrc);
+}
+
+size_t UTcAdsVariable::unpackValue(const char* valueSrc)
+{
 	switch (DataType_)
 	{
-		// case EAdsDataTypeId::ADST_VOID: // Invalid
+	// case EAdsDataTypeId::ADST_VOID: // Invalid
 	case EAdsDataTypeId::ADST_INT8:
-		copyCast<float, int8>(&Value, valueSrc);
+			CopyCast<float, int8>(&Value, valueSrc);
 		break;
 	case EAdsDataTypeId::ADST_UINT8:
-		copyCast<float, uint8>(&Value, valueSrc);
+		CopyCast<float, uint8>(&Value, valueSrc);
 		break;
 	case EAdsDataTypeId::ADST_INT16:
-		copyCast<float, int16>(&Value, valueSrc);
+		CopyCast<float, int16>(&Value, valueSrc);
 		break;
 	case EAdsDataTypeId::ADST_UINT16:
-		copyCast<float, uint16>(&Value, valueSrc);
+		CopyCast<float, uint16>(&Value, valueSrc);
 		break;
 	case EAdsDataTypeId::ADST_INT32:
-		copyCast<float, int32>(&Value, valueSrc);
+		CopyCast<float, int32>(&Value, valueSrc);
 		break;
 	case EAdsDataTypeId::ADST_UINT32:
-		copyCast<float, uint32>(&Value, valueSrc);
+		CopyCast<float, uint32>(&Value, valueSrc);
 		break;
 	case EAdsDataTypeId::ADST_INT64:
-		copyCast<float, int64>(&Value, valueSrc);
+		CopyCast<float, int64>(&Value, valueSrc);
 		break;
 	case EAdsDataTypeId::ADST_UINT64:
-		copyCast<float, uint64>(&Value, valueSrc);
+		CopyCast<float, uint64>(&Value, valueSrc);
 		break;
 	case EAdsDataTypeId::ADST_REAL32: 
-		copyCast<float, float>(&Value, valueSrc);
+		CopyCast<float, float>(&Value, valueSrc);
 		break;
 	case EAdsDataTypeId::ADST_REAL64:
-		copyCast<float, double>(&Value, valueSrc);
+		CopyCast<float, double>(&Value, valueSrc);
 		break;
 		// case EAdsDataTypeId::ADST_STRING:	// Not supported
 		// case EAdsDataTypeId::ADST_WSTRING:	// Not supported
@@ -158,12 +336,12 @@ size_t UTcAdsVariable::unpackValues(const char* errorSrc, const char* valueSrc, 
 	return Size_;
 }
 
-size_t UTcAdsVariable::unpackFromCallback(AdsNotificationHeader* pNotification)
-{
-	return 0;
-}
+// size_t UTcAdsVariable::unpackFromCallback(AdsNotificationHeader* pNotification)
+// {
+// 	return unpackValue(reinterpret_cast<char*>(pNotification->data));
+// }
 
-size_t UTcAdsVariable::packValues(char* valueDst) const
+size_t UTcAdsVariable::packValue(char* valueDst) const
 {
 	switch (DataType_)
 	{
