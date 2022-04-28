@@ -8,12 +8,14 @@
 UTcAdsVariable::UTcAdsVariable() :
 	AdsName(TEXT("")),
 	Access(EAdsAccessType::None),
-	Value(0.0f),
 	Error(0),
 	ValidAds(false),
+	Value(0.0f),
 	AdsMaster(nullptr),
-	DataType_(EAdsDataTypeId::ADST_VOID),
-	Size_(0)
+	_symbolEntry({0, 0, 0, 0, 0, 0, 0, 0, 0}),
+	// _dataType(EAdsDataTypeId::ADST_VOID),
+	// _size(0),
+	_prevVal(0.0f)
 	// SymbolEntry_({0, 0, 0, 0, 0, 0, 0, 0, 0})
 	// DataPar_({0,0,0})
 {
@@ -23,7 +25,7 @@ UTcAdsVariable::UTcAdsVariable() :
 void UTcAdsVariable::BeginPlay()
 {
 	Super::BeginPlay();
-
+	
 	// Insert ourselves in the list of variables
 	if (IsValid(AdsMaster))
 		AdsMaster->addVariable(this);
@@ -76,7 +78,7 @@ int32 UTcAdsVariable::setCallback(int32 adsPort, AmsAddr* amsAddr, ADSTRANSMODE 
 	TcAdsCallbackStruct& callbackStruct)
 {
 	AdsNotificationAttrib notificationAttrib = {
-		Size_,
+		_symbolEntry.size,
 		adsTransMode,
 		0,
 		 static_cast<unsigned long>(AdsMaster->ReadValuesInterval*10000000.0f)
@@ -119,14 +121,15 @@ size_t UTcAdsVariable::transferSize() const
 {
 	switch (Access)
 	{
-//	case EAdsAccessType::None: break;
+	case EAdsAccessType::None: break;
 	case EAdsAccessType::Read:
 		return readSize();
+	case EAdsAccessType::ReadCyclic:
+	case EAdsAccessType::ReadOnChange:
+		return _symbolEntry.size;
 	case EAdsAccessType::Write:
+	case EAdsAccessType::WriteOnChange:
 		return writeSize();
-//	case EAdsAccessType::ReadCyclic: break;
-//	case EAdsAccessType::ReadOnChange: break;
-//	case EAdsAccessType::WriteOnChange: break;
 	default: ;
 	}
 
@@ -143,41 +146,28 @@ void UTcAdsVariable::release()
 	ValidAds = false;
 }
 
-uint32 UTcAdsVariable::getSymbolEntryFromAds(const int32 adsPort, AmsAddr* amsAddress, TArray<FDataPar>* dataEntries, size_t* bufferSize)
+uint32 UTcAdsVariable::getSymbolEntryFromAds(const int32 adsPort, AmsAddr* amsAddress)
 {
 	if (AdsName == TEXT(""))
 		return ADSERR_DEVICE_INVALIDPARM;
 	
 	FSimpleAsciiString varName(AdsName);
 	unsigned long bytesRead;
-	AdsSymbolEntry symbolEntry;
 	
 	Error = AdsSyncReadWriteReqEx2(
 		adsPort,
 		amsAddress,
 		ADSIGRP_SYM_INFOBYNAMEEX,
 		0,
-		sizeof(symbolEntry),
-		&symbolEntry,
+		sizeof(_symbolEntry),
+		&_symbolEntry,
 		varName.byteSize(),
 		varName.getData(),
 		&bytesRead
 	);
+
+	ValidAds = !Error;
 	
-	if (!Error)
-	{
-		ValidAds = true;
-		Size_ = symbolEntry.size;
-		DataType_ = static_cast<EAdsDataTypeId>(symbolEntry.dataType);
-
-		if (dataEntries)
-			dataEntries->Emplace(*reinterpret_cast<FDataPar*>(&symbolEntry.iGroup));
-
-		if (bufferSize)
-			*bufferSize += transferSize();
-
-	}
-
 	return Error;
 }
 
@@ -280,7 +270,7 @@ size_t UTcAdsVariable::unpackValue(const char* errorSrc, const char* valueSrc, u
 	if (errorIn)
 	{
 		Error = errorIn;
-		return Size_;
+		return _symbolEntry.size;
 	}
 
 	Error = *reinterpret_cast<const uint32*>(errorSrc);
@@ -290,7 +280,7 @@ size_t UTcAdsVariable::unpackValue(const char* errorSrc, const char* valueSrc, u
 
 size_t UTcAdsVariable::unpackValue(const char* valueSrc)
 {
-	switch (DataType_)
+	switch (GetDataType())
 	{
 	// case EAdsDataTypeId::ADST_VOID: // Invalid
 	case EAdsDataTypeId::ADST_INT8:
@@ -333,17 +323,12 @@ size_t UTcAdsVariable::unpackValue(const char* valueSrc)
 			break;
 	}
 	
-	return Size_;
+	return _symbolEntry.size;
 }
-
-// size_t UTcAdsVariable::unpackFromCallback(AdsNotificationHeader* pNotification)
-// {
-// 	return unpackValue(reinterpret_cast<char*>(pNotification->data));
-// }
 
 size_t UTcAdsVariable::packValue(char* valueDst) const
 {
-	switch (DataType_)
+	switch (GetDataType())
 	{
 		// case EAdsDataTypeId::ADST_VOID: // Invalid
 	case EAdsDataTypeId::ADST_INT8:
@@ -386,5 +371,17 @@ size_t UTcAdsVariable::packValue(char* valueDst) const
 			break;
 	}
 	
-	return Size_;
+	return _symbolEntry.size;
+}
+
+bool UTcAdsVariable::valueChanged()
+{
+	bool tmp = (Value != _prevVal);
+	_prevVal = Value;
+	return tmp;
+}
+
+bool UTcAdsVariable::ValidAdsVariable(const UTcAdsVariable* variable)
+{
+	return IsValid(variable) && variable->ValidAds;
 }

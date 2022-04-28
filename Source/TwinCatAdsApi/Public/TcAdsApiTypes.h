@@ -116,13 +116,13 @@ enum class EAdsAccessType : uint8
 	None = 0 UMETA(DisplayName = "None"),
 	// Read on local cycle
 	Read  UMETA(DisplayName = "Read"),
+	// Read on remote cycle
+	ReadCyclic  UMETA(DisplayName = "Read Cyclic"),
+	// Read on change
+	ReadOnChange  UMETA(DisplayName = "Read On Change"),
 	// Write on local cycle
 	Write  UMETA(DisplayName = "Write"),
-	// Read on remote cycle [experimental]
-	ReadCyclic  UMETA(DisplayName = "Read Cyclic"),
-	// Read on change [experimental]
-	ReadOnChange  UMETA(DisplayName = "Read On Change"),
-	// Write on change [not implemented]
+	// Write on change
 	WriteOnChange  UMETA(DisplayName = "Write On Change")
 };
 

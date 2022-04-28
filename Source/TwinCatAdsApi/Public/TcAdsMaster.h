@@ -32,26 +32,13 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type endPlayReason) override;
 	
-	// static void RemoveVariable(const UTcAdsVariable* Variable, TArray<UTcAdsVariable*>& VarList,
-	// 	TArray<FDataPar>& ReqList, size_t& BufferSize); //, EAdsAccessType Access);
-	
 	AmsAddr _remoteAmsAddress;
 	FTimerHandle _readValuesTimerHandle;
 	FTimerHandle _writeValuesTimerHandle;
-	// FTimerHandle _updateListsTimerHandle;
 
-	TArray<FDataPar> _readReqBuffer;
-	size_t _readBufferSize;
-	TArray<FDataPar> _writeReqBuffer;
-	size_t _writeBufferSize;
-	
-//	void updateVarLists();
-//	void checkForNewVars(TArray<UTcAdsVariable*>& vars, TArray<FDataPar>& reqBuffer, size_t& bufferSize);
-//	void checkForCallbackVars();
 	static bool parseAmsAddress(const FString& netId, int32 port, AmsAddr& out);
 
-	static void removeVariablePrivate(const UTcAdsVariable* variable, TArray<UTcAdsVariable*>& variableList,
-		TArray<FDataPar> reqBuffer, size_t& bufferSize);
+	static void removeVariablePrivate(const UTcAdsVariable* variable, TArray<UTcAdsVariable*>& variableList);
 
 	void removeCallbackVariable(UTcAdsVariable* variable);
 
@@ -77,14 +64,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time",
 		meta = (DisplayName = "Write Values Interval [s]"))
 	float WriteValuesInterval;
+	// Measures the round trip time of reading remote variables on local cycle [ms]
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Time",
 		meta = (DisplayName = "Read Data Round Trip Time [ms]"))
 	float ReadDataRoundTripTime;
-	// Interval between checking for new variables
-	// UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time",
-	// 	meta = (DisplayName = "Update Variable Lists Interval [s]"))
-	// float UpdateListsInterval;
-	
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, EditFixedSize, Category = "Remote ADS Info")
 	FString RemoteAmsNetId;

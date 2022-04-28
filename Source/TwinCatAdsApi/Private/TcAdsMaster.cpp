@@ -13,13 +13,9 @@ uint32 ATcAdsMaster::_ActiveMasters = 0;
 // Sets default values
 ATcAdsMaster::ATcAdsMaster() :
 	_remoteAmsAddress({{0, 0, 0, 0, 0, 0}, 0}),
-	_readBufferSize(0),
-	_writeBufferSize(0),
-	// _firstTick(true),
 	ReadValuesInterval(0.1f),
 	WriteValuesInterval(0.1f),
 	ReadDataRoundTripTime(0.0f),
-	// UpdateListsInterval(10.0f),
 	RemoteAmsNetId(TEXT("127.0.0.1.1.1")),
 	RemoteAmsPort(851),
 	RemoteAmsAddressValid(false)
@@ -148,35 +144,12 @@ void ATcAdsMaster::BeginPlay()
 
 	++_ActiveMasters;
 	
-	// union {uint32 raw; AdsVersion version;}localVersion;
-	// localVersion.raw = AdsGetDllVersion();
-	// LocalDllVersion = FString::Printf(TEXT("%u.%u.%u"),
-	// 	localVersion.version.version,
-	// 	localVersion.version.revision,
-	// 	localVersion.version.build
-	// );
-	//
-	// AmsAddr localAddress;
-	// AdsGetLocalAddressEx(AdsPort, &localAddress);
-	// LocalAmsAddress = FString::Printf(TEXT("%u.%u.%u.%u.%u.%u:%u"),
-	// 	localAddress.netId.b[0],
-	// 	localAddress.netId.b[1],
-	// 	localAddress.netId.b[2],
-	// 	localAddress.netId.b[3],
-	// 	localAddress.netId.b[4],
-	// 	localAddress.netId.b[5],
-	// 	localAddress.port
-	// );
-	
 	// Start timers
 	if (ReadValuesInterval > 0.0f)
 		GetWorldTimerManager().SetTimer(_readValuesTimerHandle,this, &ATcAdsMaster::readValues, ReadValuesInterval, true);
 
 	if (WriteValuesInterval > 0.0f)
 		GetWorldTimerManager().SetTimer(_writeValuesTimerHandle,this, &ATcAdsMaster::writeValues, WriteValuesInterval, true);
-
-	// if (UpdateListsInterval > 0.0f)
-	// 	GetWorldTimerManager().SetTimer(_updateListsTimerHandle, this, &ATcAdsMaster::updateVarLists, UpdateListsInterval, true);
 }
 
 void ATcAdsMaster::EndPlay(const EEndPlayReason::Type endPlayReason)
@@ -208,25 +181,16 @@ void ATcAdsMaster::EndPlay(const EEndPlayReason::Type endPlayReason)
 	
 }
 
-void ATcAdsMaster::removeVariable(UTcAdsVariable* variable) // const UTcAdsVariable* Variable, TArray<UTcAdsVariable*>& VarList, TArray<FDataPar>& ReqList, size_t& BufferSize) //, EAdsAccessType Access)
+void ATcAdsMaster::removeVariable(UTcAdsVariable* variable)
 {
-	if (!IsValid(variable))
-	{
+	if (!UTcAdsVariable::ValidAdsVariable(variable))
 		return;
-	}
-	if (!variable->ValidAds)
-	{
-		return;
-	}
 	
 	switch (variable->Access)
 	{
 	case EAdsAccessType::None: break;
 	case EAdsAccessType::Read:
-		removeVariablePrivate(variable, ReadVariableList, _readReqBuffer, _readBufferSize);
-		break;
-	case EAdsAccessType::Write:
-		removeVariablePrivate(variable, WriteVariableList, _writeReqBuffer, _writeBufferSize);
+		removeVariablePrivate(variable, ReadVariableList);
 		break;
 	case EAdsAccessType::ReadCyclic:
 		removeCallbackVariable(variable);
@@ -234,141 +198,13 @@ void ATcAdsMaster::removeVariable(UTcAdsVariable* variable) // const UTcAdsVaria
 	case EAdsAccessType::ReadOnChange:
 		removeCallbackVariable(variable);
 		break;
-	case EAdsAccessType::WriteOnChange: break;
+	case EAdsAccessType::Write:
+	case EAdsAccessType::WriteOnChange:
+		removeVariablePrivate(variable, WriteVariableList);
+		break;
 	default: ;
 	}
 }
-
-// void ATcAdsMaster::updateVarLists()
-// {
-// 	// // Update read list
-// 	// checkForNewVars(ReadVariableList, _readReqBuffer, _readBufferSize);
-// 	//
-// 	// // Update write list
-// 	// checkForNewVars(WriteVariableList, _writeReqBuffer, _writeBufferSize);
-// 	//
-// 	// // Update callback list
-// 	// checkForCallbackVars();
-// }
-
-// void ATcAdsMaster::checkForNewVars(TArray<UTcAdsVariable*>& vars, TArray<FDataPar>& reqBuffer, size_t& bufferSize) //, EAdsAccessType Access)
-// {
-// 	// Check for new variables in the list. Since new variables are always added at the end, we check in reverse
-// 	// (so that normally we will check the first entry and immediately step out).
-// 	bool newVar = false;
-// 	int32 newIndex = 0;
-// 	for (auto i = vars.Num(); i--;)
-// 	{
-// 		// Skip variables that are pending kill (this shouldn't happen, but you never know with unreal...)
-// 		if (!IsValid(vars[i]))
-// 			continue;
-// 		
-// 		if (vars[i]->newVar())
-// 		{
-// 			newVar = true;
-// 			newIndex = i;
-// 		}
-// 		else
-// 			break;
-// 	}
-//
-// 	// Nothing to do
-// 	if (!newVar)
-// 		return;
-//
-// 	// If there are any new variables then we must ask ADS for them in forward order, so that the
-// 	// arrays xxxVariableList and xxxReqBuffer_ are synchronized
-// 	for (auto i = newIndex; i < vars.Num(); ++i)
-// 	{
-// 		// Skip variables that are pending kill again
-// 		if (!IsValid(vars[i]))
-// 			continue;
-//
-// 		auto err = vars[i]->getSymbolEntryFromAds(AdsPort, _remoteAmsAddress, reqBuffer);
-// 		if (!err)
-// 		{
-// 			bufferSize += vars[i]->transferSize();
-// 		}
-// 		
-// 		if (GEngine)
-// 		{
-// 			if (err)
-// 			{
-// 				GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Yellow,
-// 					FString::Printf(TEXT("Failed to subscribe to '%s' variable '%s'. Error code 0x%x"),
-// 						AdsAccessTypeName(vars[i]->Access),
-// 						*vars[i]->AdsName,
-// 						err
-// 						));
-// 			}
-// 			else
-// 			{
-// 				GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Green,
-// 					FString::Printf(TEXT("Successfully subscribed to '%s' variable '%s'"),
-// 						AdsAccessTypeName(vars[i]->Access),
-// 						*vars[i]->AdsName
-// 						));
-// 			}
-// 		}
-// 	}
-// }
-
-// void ATcAdsMaster::checkForCallbackVars()
-// {
-// 	// Check for new variables in the list. Since new variables are always added at the end, we check in reverse
-// 	// (so that normally we will check the first entry and immediately step out).
-// 	bool newVar = false;
-// 	int32 newIndex = 0;
-// 	for (auto i = _CallbackList.Num(); i--;)
-// 	{
-// 		// Skip variables that are pending kill (this shouldn't happen, but you never know with unreal...)
-// 		if (!IsValid(_CallbackList[i].variable))
-// 			continue;
-// 		
-// 		if (_CallbackList[i].variable->newVar())
-// 		{
-// 			newVar = true;
-// 			newIndex = i;
-// 		}
-// 		else
-// 			break;
-// 	}
-//
-// 	// Nothing to do
-// 	if (!newVar)
-// 		return;
-// 	
-// 	for (auto i = newIndex; i < _CallbackList.Num(); ++i)
-// 	{
-// 		// Skip variables that are pending kill again
-// 		if (!IsValid(_CallbackList[i].variable))
-// 			continue;
-//
-// 		auto err = _CallbackList[i].variable->setupCallback(AdsPort, _remoteAmsAddress, _CallbackList[i].handle);
-// 		if (GEngine)
-// 		{
-// 			if (err)
-// 			{
-// 				GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Yellow,
-// 					FString::Printf(TEXT("Failed to add callback for '%s' variable '%s'. Error code 0x%x"),
-// 						AdsAccessTypeName(_CallbackList[i].variable->Access),
-// 						*_CallbackList[i].variable->AdsName,
-// 						err
-// 					)
-// 				);
-// 			}
-// 			else
-// 			{
-// 				GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Green,
-// 					FString::Printf(TEXT("Successfully added callback for '%s' variable '%s'"),
-// 						AdsAccessTypeName(_CallbackList[i].variable->Access),
-// 						*_CallbackList[i].variable->AdsName
-// 					)
-// 				);
-// 			}
-// 		}
-// 	}
-// }
 
 bool ATcAdsMaster::parseAmsAddress(const FString& netId, const int32 port, AmsAddr& out)
 {
@@ -405,8 +241,7 @@ bool ATcAdsMaster::parseAmsAddress(const FString& netId, const int32 port, AmsAd
 	return true;
 }
 
-void ATcAdsMaster::removeVariablePrivate(const UTcAdsVariable* variable, TArray<UTcAdsVariable*>& variableList,
-	TArray<FDataPar> reqBuffer, size_t& bufferSize)
+void ATcAdsMaster::removeVariablePrivate(const UTcAdsVariable* variable, TArray<UTcAdsVariable*>& variableList)
 {
 	if (variableList.Num() == 0)
 		return;
@@ -424,8 +259,6 @@ void ATcAdsMaster::removeVariablePrivate(const UTcAdsVariable* variable, TArray<
 	}
 
 	variableList.RemoveAt(idx);
-	reqBuffer.RemoveAt(idx);
-	bufferSize -= variable->transferSize();
 	
 	UE_LOG(LogTcAds, Display,
 		TEXT("Unsubscribed variable '%s'"),
@@ -486,16 +319,11 @@ void ATcAdsMaster::addVariable(UTcAdsVariable* variable)
 	
 	switch (variable->Access)
 	{
-//	case EAdsAccessType::None: break;
+	case EAdsAccessType::None: break;
 	case EAdsAccessType::Read:
-		err = variable->getSymbolEntryFromAds(AdsPort, &_remoteAmsAddress, &_readReqBuffer, &_readBufferSize);
+		err = variable->getSymbolEntryFromAds(AdsPort, &_remoteAmsAddress);
 		if (!err)
 			ReadVariableList.Add(variable);
-		break;
-	case EAdsAccessType::Write:
-		err = variable->getSymbolEntryFromAds(AdsPort, &_remoteAmsAddress, &_writeReqBuffer, &_writeBufferSize);
-		if (!err)
-			WriteVariableList.Add(variable);
 		break;
 	case EAdsAccessType::ReadCyclic:
 		err = variable->getSymbolEntryFromAds(AdsPort, &_remoteAmsAddress);
@@ -517,7 +345,12 @@ void ATcAdsMaster::addVariable(UTcAdsVariable* variable)
 				_CallbackList.Emplace(temp);
 		}
 		break;
-//	case EAdsAccessType::WriteOnChange: break;
+	case EAdsAccessType::Write:
+	case EAdsAccessType::WriteOnChange:
+		err = variable->getSymbolEntryFromAds(AdsPort, &_remoteAmsAddress);
+		if (!err)
+			WriteVariableList.Add(variable);
+		break;
 	default: ;
 	}
 	
@@ -559,26 +392,48 @@ void ATcAdsMaster::readValues()
 		return;
 	
 	// checkForNewVars(ReadVariableList, _readReqBuffer, _readBufferSize); //, EAdsAccessType::Read);
+
+	size_t bufferSize = 0;
+
+	TArray<UTcAdsVariable*> readyList;
+	readyList.Reserve(ReadVariableList.Num());
+	
+	// Check what variables are ready for read
+	for (auto adsVar : ReadVariableList)
+	{
+		if (UTcAdsVariable::ValidAdsVariable(adsVar))
+		{
+			readyList.Add(adsVar);
+			bufferSize += adsVar->transferSize();
+		}
+	}
 	
 	// Nothing to do
-	if (_readReqBuffer.Num() == 0)
+	if (readyList.Num() == 0)
 		return;
+
+	// Create the request buffer and the receive buffer
+	TArray<FDataPar> reqBuffer;
+	reqBuffer.Reserve(readyList.Num());
+	TSimpleBuffer<char> readBuffer(bufferSize);
 	
-	TSimpleBuffer<char> readBuffer(_readBufferSize);
+	for (auto adsVar : readyList)
+	{
+		reqBuffer.Emplace(adsVar->reqData());
+	}
 	
 	// Get data from ADS
 	unsigned long bytesRead;
-
 	double readTimeTick = FPlatformTime::Seconds();
 	long err = AdsSyncReadWriteReqEx2(
 		AdsPort,
 		&_remoteAmsAddress,
 		ADSIGRP_SUMUP_READ,
-		_readReqBuffer.Num(),
+		reqBuffer.Num(),
 		readBuffer.byteSize(),
 		readBuffer.getData(),
-		_readReqBuffer.Num()*sizeof(FDataPar),
-		_readReqBuffer.GetData(),
+		reqBuffer.Num()*sizeof(FDataPar),
+		reqBuffer.GetData(),
 		&bytesRead
 	);
 	double readTimeTock = FPlatformTime::Seconds();
@@ -587,14 +442,11 @@ void ATcAdsMaster::readValues()
 	
 	// Unpack data
 	char* pErrorPos = readBuffer.getData();
-	char* pValuePos = pErrorPos + _readReqBuffer.Num()*sizeof(uint32);
-	for (const auto adsVar : ReadVariableList)
+	char* pValuePos = pErrorPos + reqBuffer.Num()*sizeof(uint32);
+	for (const auto adsVar : readyList)
 	{
-		if (IsValid(adsVar) && adsVar->ValidAds)
-		{
-			pValuePos += adsVar->unpackValue(pErrorPos, pValuePos, err);
-			pErrorPos += sizeof(uint32);
-		}
+		pValuePos += adsVar->unpackValue(pErrorPos, pValuePos, err);
+		pErrorPos += sizeof(uint32);
 	}
 }
 
@@ -604,31 +456,42 @@ void ATcAdsMaster::writeValues()
 	if (AdsPort <= 0)
 		return;
 
-	// checkForNewVars(WriteVariableList, _writeReqBuffer, _writeBufferSize); //, EAdsAccessType::Write);
-
-	// Nothing to do
-	if (_writeReqBuffer.Num() == 0)
-		return;
-
-	const size_t reqSize = _writeReqBuffer.Num()*sizeof(FDataPar);
+	size_t bufferSize = 0;
 	
-	TSimpleBuffer<char> writeBuffer(_writeBufferSize);
-	// Copy data from Write request buffer
-	memcpy_s(writeBuffer.getData(), writeBuffer.byteSize(), _writeReqBuffer.GetData(), reqSize);
-
-	char* bufferPos = writeBuffer.getData() + reqSize;
+	TArray<UTcAdsVariable*> readyList;
+	readyList.Reserve(WriteVariableList.Num());
 	
-	// Get data from variables
-	for (const auto adsVar : WriteVariableList)
+	// Check what variables are ready for write
+	for (auto adsVar : WriteVariableList)
 	{
-		if (IsValid(adsVar) && adsVar->ValidAds)
+		if (UTcAdsVariable::ValidAdsVariable(adsVar) && adsVar->readyToWrite())
 		{
-			bufferPos += adsVar->packValue(bufferPos);
+			readyList.Add(adsVar);
+			bufferSize += adsVar->transferSize();
 		}
 	}
+	
+	// Nothing to do
+	if (readyList.Num() == 0)
+		return;
 
+	size_t reqSize = readyList.Num()*sizeof(FDataPar);
+
+	// Create a buffer for write data [ reqData[0], reqData[1], ..., reqData[N], value[0], value[1], ..., value[n] ]
+	TSimpleBuffer<char> writeBuffer(bufferSize);
+	
+	// Copy request info and values
+	auto pReqBuffer = writeBuffer.getData();
+	auto pValueBuffer = pReqBuffer + reqSize;
+	for (auto adsVar : readyList)
+	{
+		*reinterpret_cast<FDataPar*>(pReqBuffer) = adsVar->reqData();
+		pReqBuffer += sizeof(FDataPar);
+		pValueBuffer += adsVar->packValue(pValueBuffer);
+	}
+	
 	// Make a buffer for the ADS return codes
-	TSimpleBuffer<uint32> errorBuffer(_writeReqBuffer.Num());
+	TSimpleBuffer<int32> errorBuffer(readyList.Num());
 	
 	// Get data from ADS
 	unsigned long bytesRead;
@@ -636,22 +499,27 @@ void ATcAdsMaster::writeValues()
 		AdsPort,
 		&_remoteAmsAddress,
 		ADSIGRP_SUMUP_WRITE,
-		_writeReqBuffer.Num(),
+		readyList.Num(),
 		errorBuffer.byteSize(),
 		errorBuffer.getData(),
 		writeBuffer.byteSize(),
 		writeBuffer.getData(),
 		&bytesRead
 	);
+
+	if (err)
+	{
+		for (auto adsVar : readyList)
+			adsVar->Error = err;
+
+		return;
+	}
 	
 	// Unpack errors
-	uint32* pErrorPos = errorBuffer.getData();
-	for (auto adsVar : WriteVariableList)
+	auto pErrorPos = errorBuffer.getData();
+	for (auto adsVar : readyList)
 	{
-		if (IsValid(adsVar) && adsVar->ValidAds)
-		{
-			adsVar->Error = *pErrorPos;
-			++pErrorPos;
-		}
+		adsVar->Error = *pErrorPos;
+		++pErrorPos;
 	}
 }

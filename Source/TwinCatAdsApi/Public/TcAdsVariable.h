@@ -32,8 +32,8 @@ public:
 	virtual void TickComponent(float deltaTime, ELevelTick tickType, FActorComponentTickFunction* thisTickFunction) override;
 
 	size_t transferSize() const;
-	size_t readSize() const { return (Size_ + sizeof(uint32)); }
-	size_t writeSize() const { return (Size_ + sizeof(FDataPar)); }
+	size_t readSize() const { return (_symbolEntry.size + sizeof(uint32)); }
+	size_t writeSize() const { return (_symbolEntry.size + sizeof(FDataPar)); }
 
 	void release();
 
@@ -41,37 +41,36 @@ public:
 	FString AdsName;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ads Info")
 	EAdsAccessType Access;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ads Info")
-	float Value;
 	UPROPERTY(VisibleAnywhere, Category = "Ads Info")
 	int32 Error;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ads Info")
 	bool ValidAds;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ads Info")
+	float Value;
 	
 	UFUNCTION(BlueprintCallable, Category = "Ads Info")
 	int64 GetError() const { return Error; }
 	UFUNCTION(BlueprintCallable, Category = "Ads Info")
-	EAdsDataTypeId GetDataType() const { return DataType_; }
+	EAdsDataTypeId GetDataType() const { return static_cast<EAdsDataTypeId>(_symbolEntry.dataType); }
 	/*!
 	 * Blueprint friendly way to get ADS variable size. Incurs an additional cast since blueprint does not support
-	 * unsigned variables. If you are using c++ use \c size instead.
+	 * unsigned variables. If you are using c++ use \c symbolSize instead.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Ads Info")
-	int64 GetSize() const { return Size_; }
+	int64 SymbolSize() const { return _symbolEntry.size; }
 	
 	/*!
 	 * Get ADS variable size
 	 */
-	uint32 size() const { return Size_; }
+	uint32 symbolSize() const { return _symbolEntry.size; }
 	/*!
 	 * Contact the plc to get variable information for ADS (this is done automatically by TcAdsMaster)
 	 * @param adsPort [in] An open ads port
 	 * @param amsAddress [in] Ams address to remote machine
-	 * @param dataEntries [opt][in/out] Array of data entries for ADS-SUM commands
-	 * @param bufferSize [opt][in/out] Buffer size for ADS-SUM commands
 	 * @return Ads error code
 	 */
-	uint32 getSymbolEntryFromAds(int32 adsPort, AmsAddr* amsAddress, TArray<FDataPar>* dataEntries = nullptr, size_t* bufferSize = nullptr);
+	uint32 getSymbolEntryFromAds(int32 adsPort, AmsAddr* amsAddress);
 	int32 setupCallbackVariable(int32 adsPort, AmsAddr* amsAddr, ADSTRANSMODE adsTransMode, TcAdsCallbackStruct& callbackStruct);
 	int32 terminateCallbackVariable(int32 adsPort, AmsAddr* amsAddr, TcAdsCallbackStruct& callbackStruct);
 	
@@ -84,14 +83,28 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ads Info")
 	ATcAdsMaster* AdsMaster;
+
+	// For internal use. Don't use this
+	bool valueChanged();
+	// For internal use. Don't use this
+	bool readyToWrite() { return ((Access == EAdsAccessType::WriteOnChange) ? valueChanged() : true); }
+
+	static bool ValidAdsVariable(const UTcAdsVariable* variable);
+
+	const AdsSymbolEntry& symbolEntry() const { return _symbolEntry; }
+	const FDataPar& reqData() const { return *reinterpret_cast<const FDataPar*>(&_symbolEntry.iGroup); }
 	
 private:
+	// FDataPar _dataPar;
+	AdsSymbolEntry _symbolEntry;
 	
-	UPROPERTY(VisibleAnywhere, Category = "Ads Info")
-	EAdsDataTypeId DataType_;
+	// UPROPERTY(VisibleAnywhere, Category = "Ads Info")
+	// EAdsDataTypeId _dataType;
 
-	UPROPERTY(VisibleAnywhere, Category = "Ads Info")
-	uint32 Size_;
+	// UPROPERTY(VisibleAnywhere, Category = "Ads Info")
+	// uint32 _size;
+
+	float _prevVal;
 };
 
 template <class TDst, class TSrc>
