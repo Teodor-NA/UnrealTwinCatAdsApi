@@ -87,7 +87,7 @@ public:
 	// For internal use. Don't use this
 	bool valueChanged();
 	// For internal use. Don't use this
-	bool readyToWrite() { return ((Access == EAdsAccessType::WriteOnChange) ? valueChanged() : true); }
+	bool readyToWrite() { return (((Access == EAdsAccessType::WriteOnChange) || (Access == EAdsAccessType::ReadWriteOnChange)) ? valueChanged() : true); }
 
 	static bool ValidAdsVariable(const UTcAdsVariable* variable);
 
@@ -95,15 +95,8 @@ public:
 	const FDataPar& reqData() const { return *reinterpret_cast<const FDataPar*>(&_symbolEntry.iGroup); }
 	
 private:
-	// FDataPar _dataPar;
 	AdsSymbolEntry _symbolEntry;
 	
-	// UPROPERTY(VisibleAnywhere, Category = "Ads Info")
-	// EAdsDataTypeId _dataType;
-
-	// UPROPERTY(VisibleAnywhere, Category = "Ads Info")
-	// uint32 _size;
-
 	float _prevVal;
 };
 

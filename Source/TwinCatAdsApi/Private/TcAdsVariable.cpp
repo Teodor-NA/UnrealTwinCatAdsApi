@@ -88,11 +88,13 @@ int32 UTcAdsVariable::setCallback(int32 adsPort, AmsAddr* amsAddr, ADSTRANSMODE 
 	Error = AdsSyncAddDeviceNotificationReqEx(
 		adsPort,
 		amsAddr,
-		ADSIGRP_SYM_VALBYHND,
-		callbackStruct.hUser,
+		_symbolEntry.iGroup,
+		_symbolEntry.iOffs,
+		// ADSIGRP_SYM_VALBYHND,
+		// callbackStruct.hUser,
 		&notificationAttrib,
 		&ATcAdsMaster::ReadCallback,
-		callbackStruct.hUser,
+		callbackStruct.index,
 		&callbackStruct.hNotification
 	);
 
@@ -124,11 +126,15 @@ size_t UTcAdsVariable::transferSize() const
 	case EAdsAccessType::None: break;
 	case EAdsAccessType::Read:
 		return readSize();
-	case EAdsAccessType::ReadCyclic:
-	case EAdsAccessType::ReadOnChange:
-		return _symbolEntry.size;
+	// case EAdsAccessType::ReadCyclic:
+	// 	// Fallthrough
+	// case EAdsAccessType::ReadOnChange:
+	// 	return _symbolEntry.size;
 	case EAdsAccessType::Write:
+		// Fallthrough
 	case EAdsAccessType::WriteOnChange:
+		// Fallthrough
+	case EAdsAccessType::ReadWriteOnChange:
 		return writeSize();
 	default: ;
 	}
@@ -138,10 +144,11 @@ size_t UTcAdsVariable::transferSize() const
 
 void UTcAdsVariable::release()
 {
+	if (!ValidAds)
+		return;
+	
 	if (IsValid(AdsMaster))
-	{
 		AdsMaster->removeVariable(this);
-	}
 
 	ValidAds = false;
 }
@@ -176,19 +183,19 @@ int32 UTcAdsVariable::setupCallbackVariable(int32 adsPort, AmsAddr* amsAddr, ADS
 	ValidAds = false;
 	
 	// Get handle
-	getHandle(adsPort, amsAddr, callbackStruct.hUser);
+	// getHandle(adsPort, amsAddr, callbackStruct.hUser);
 
-	if (Error)
-	{
-		UE_LOG(LogTcAds, Error,
-			TEXT("Failed to get handle for '%s' variable '%s'. Error code: 0x%x"),
-			AdsAccessTypeName(Access),
-			*AdsName,
-			Error
-		);
-		
-		return Error;
-	}
+	// if (Error)
+	// {
+	// 	UE_LOG(LogTcAds, Error,
+	// 		TEXT("Failed to get handle for '%s' variable '%s'. Error code: 0x%x"),
+	// 		AdsAccessTypeName(Access),
+	// 		*AdsName,
+	// 		Error
+	// 	);
+	// 	
+	// 	return Error;
+	// }
 
 	setCallback(adsPort, amsAddr, adsTransMode, callbackStruct);
 
@@ -196,7 +203,8 @@ int32 UTcAdsVariable::setupCallbackVariable(int32 adsPort, AmsAddr* amsAddr, ADS
 	{
 		UE_LOG(LogTcAds, Error,
 			TEXT("Failed to set up callback for '%s' variable '%s'. Error code 0x%x"),
-			AdsAccessTypeName(Access),
+			*GetAdsAccessTypeName(Access),
+//			AdsAccessTypeName(Access),
 			*AdsName,
 			Error
 		);
@@ -209,7 +217,8 @@ int32 UTcAdsVariable::setupCallbackVariable(int32 adsPort, AmsAddr* amsAddr, ADS
 
 	UE_LOG(LogTcAds, Display,
 		TEXT("Successfully set up callback for '%s' variable '%s'"),
-		AdsAccessTypeName(Access),
+		*GetAdsAccessTypeName(Access),
+//		AdsAccessTypeName(Access),
 		*AdsName
 	);
 
@@ -227,7 +236,8 @@ int32 UTcAdsVariable::terminateCallbackVariable(int32 adsPort, AmsAddr* amsAddr,
 	{
 		UE_LOG(LogTcAds, Error,
 		   TEXT("Failed to delete callback notification for '%s' variable '%s'. Error code: 0x%x"),
-		   AdsAccessTypeName(Access),
+			*GetAdsAccessTypeName(Access),
+//		   AdsAccessTypeName(Access),
 		   *AdsName,
 		   Error
 	   );
@@ -236,31 +246,32 @@ int32 UTcAdsVariable::terminateCallbackVariable(int32 adsPort, AmsAddr* amsAddr,
 	{
 		UE_LOG(LogTcAds, Display,
 			TEXT("Deleted callback notification for '%s' variable '%s'"),
-			AdsAccessTypeName(Access),
+			*GetAdsAccessTypeName(Access),
+//			AdsAccessTypeName(Access),
 			*AdsName
 		);
 	 }
 	
 	// Release handle
-	releaseHandle(adsPort, amsAddr, callbackStruct.hUser);
-
-	if (Error)
-	{
-		UE_LOG(LogTcAds, Error,
-		   TEXT("Failed to release handle for '%s' variable '%s'. Error code: 0x%x"),
-		   AdsAccessTypeName(Access),
-		   *AdsName,
-		   Error
-	   );
-	}
-	else
-	{
-		UE_LOG(LogTcAds, Display,
-			TEXT("Released handle for '%s' variable '%s'"),
-			AdsAccessTypeName(Access),
-			*AdsName
-		);
-	}
+	// releaseHandle(adsPort, amsAddr, callbackStruct.hUser);
+	//
+	// if (Error)
+	// {
+	// 	UE_LOG(LogTcAds, Error,
+	// 	   TEXT("Failed to release handle for '%s' variable '%s'. Error code: 0x%x"),
+	// 	   AdsAccessTypeName(Access),
+	// 	   *AdsName,
+	// 	   Error
+	//    );
+	// }
+	// else
+	// {
+	// 	UE_LOG(LogTcAds, Display,
+	// 		TEXT("Released handle for '%s' variable '%s'"),
+	// 		AdsAccessTypeName(Access),
+	// 		*AdsName
+	// 	);
+	// }
 
 	return Error;
 }
@@ -284,7 +295,7 @@ size_t UTcAdsVariable::unpackValue(const char* valueSrc)
 	{
 	// case EAdsDataTypeId::ADST_VOID: // Invalid
 	case EAdsDataTypeId::ADST_INT8:
-			CopyCast<float, int8>(&Value, valueSrc);
+		CopyCast<float, int8>(&Value, valueSrc);
 		break;
 	case EAdsDataTypeId::ADST_UINT8:
 		CopyCast<float, uint8>(&Value, valueSrc);
@@ -322,7 +333,8 @@ size_t UTcAdsVariable::unpackValue(const char* valueSrc)
 		default:
 			break;
 	}
-	
+
+	_prevVal = Value;
 	return _symbolEntry.size;
 }
 
