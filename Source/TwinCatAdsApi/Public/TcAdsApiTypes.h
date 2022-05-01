@@ -1,14 +1,12 @@
 ﻿
 #pragma once
-// #include "TcAdsVariable.h"
-
-// Needed for USTRUCT()
-// #include "CoreMinimal.h"
-// #include "TcAdsApiTypes.generated.h"
 
 // Forward declarations
 class UTcAdsVariable;
 class ATcAdsMaster;
+class UTcAdsVariable;
+// class FTcAdsAsyncVariable;
+class ATcAdsAsyncMaster;
 
 // Making the type enum explicitly since including wtypes.h seems to break Unreal
 

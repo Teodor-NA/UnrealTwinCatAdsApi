@@ -3,16 +3,18 @@
 
 #include "TcAdsAsyncMaster.h"
 
+#include "TcAdsVariable.h"
+
 
 FTcAdsAsyncWorker* FTcAdsAsyncWorker::_Instance = nullptr;
 
 
-FTcAdsAsyncWorker::FTcAdsAsyncWorker(ATcAdsAsyncMaster* master, int32 numberToCount) :
-	_thread(nullptr),
-	_master(master),
-	_counter(0),
-	_numberToCount(numberToCount),
-	_error(0)
+FTcAdsAsyncWorker::FTcAdsAsyncWorker(int32 numberToCount)
+	: _thread(nullptr)
+//	, _master(master)
+	, _counter(0)
+	, _numberToCount(numberToCount)
+	, _error(0)
 {
 	_thread = FRunnableThread::Create(this, TEXT("TcAdsAsyncMaster"), 0, TPri_Normal);
 	if (_thread)
@@ -35,13 +37,13 @@ FTcAdsAsyncWorker::~FTcAdsAsyncWorker()
 	_thread = nullptr;
 }
 
-FTcAdsAsyncWorker* FTcAdsAsyncWorker::Create(ATcAdsAsyncMaster* master, int32 numberToCount)
+FTcAdsAsyncWorker* FTcAdsAsyncWorker::Create(int32 numberToCount)
 {
 	//Create new instance of thread if it does not exist
 	//		and the platform supports multi threading!
 	if (!_Instance && FPlatformProcess::SupportsMultithreading())
 	{
-		_Instance = new FTcAdsAsyncWorker(master, numberToCount);			
+		_Instance = new FTcAdsAsyncWorker(numberToCount);			
 	}
 	return _Instance;
 }
@@ -141,6 +143,15 @@ bool FTcAdsAsyncWorker::IsThreadFinished()
 	return true;
 }
 
+void FTcAdsAsyncWorker::CreateVariable(const UTcAdsVariable* variable)
+{
+	if (!_Instance)
+		return;
+	
+	auto idx = _Instance->_variableList.Emplace(variable);
+	_Instance->_variableList[idx].getSymbolEntry(variable->AdsName, _Instance->_adsPort, &_Instance->_amsAddr);
+}
+
 // Sets default values
 ATcAdsAsyncMaster::ATcAdsAsyncMaster() :
 	_asyncWorker(nullptr)
@@ -155,7 +166,7 @@ void ATcAdsAsyncMaster::BeginPlay()
 {
 	Super::BeginPlay();
 
-	_asyncWorker = FTcAdsAsyncWorker::Create(this, 10);
+	_asyncWorker = FTcAdsAsyncWorker::Create(10);
 }
 
 void ATcAdsAsyncMaster::EndPlay(const EEndPlayReason::Type EndPlayReason)
