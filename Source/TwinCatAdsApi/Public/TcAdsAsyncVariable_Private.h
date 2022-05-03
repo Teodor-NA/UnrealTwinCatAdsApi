@@ -17,11 +17,13 @@ struct TTcAdsValueStruct
 
 class FTcAdsAsyncVariable : TTcAdsValueStruct<float, LONG>
 {
+	friend UTcAdsAsyncVariable;
+	
 public:
 	// using ValueType = ValueType;
 	// using ErrorType = ErrorType;
 
-	explicit FTcAdsAsyncVariable(float initialValue = 0);
+	explicit FTcAdsAsyncVariable(UTcAdsAsyncVariable* reference);
 	// FTcAdsAsyncVariable(ULONG port, AmsAddr* addr, float initialValue = 0);
 	~FTcAdsAsyncVariable();
 
@@ -41,12 +43,11 @@ public:
 	ErrorType getSymbolEntry(const FString& adsName, LONG adsPort, AmsAddr* amsAddr);
 	
 private:
-	// TTcAdsValueStruct _value;
-	// float _value;
-	// LONG _error;
 	AdsSymbolEntry _symbolEntry;
 	std::mutex _mutexLock;
 
+	UTcAdsAsyncVariable* _reference;
+	
 	EAdsDataTypeId _getDataType() const { return static_cast<EAdsDataTypeId>(_symbolEntry.dataType); }
 	const FDataPar& _getDataPar() const { return *reinterpret_cast<const FDataPar*>(&_symbolEntry.iGroup); }
 	

@@ -40,7 +40,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ads Info")
 	FString AdsName;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ads Info")
-	EAdsAccessType Access;
+	EAdsAccessMode Access;
 	UPROPERTY(VisibleAnywhere, Category = "Ads Info")
 	int32 Error;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ads Info")
@@ -87,7 +87,7 @@ public:
 	// For internal use. Don't use this
 	bool valueChanged();
 	// For internal use. Don't use this
-	bool readyToWrite() { return (((Access == EAdsAccessType::WriteOnChange) || (Access == EAdsAccessType::ReadWriteOnChange)) ? valueChanged() : true); }
+	bool readyToWrite() { return (((Access == EAdsAccessMode::WriteOnChange) || (Access == EAdsAccessMode::ReadWriteOnChange)) ? valueChanged() : true); }
 
 	static bool ValidAdsVariable(const UTcAdsVariable* variable);
 

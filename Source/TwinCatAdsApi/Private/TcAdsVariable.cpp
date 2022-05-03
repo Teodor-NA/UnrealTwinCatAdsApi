@@ -7,7 +7,7 @@
 
 UTcAdsVariable::UTcAdsVariable() :
 	AdsName(TEXT("")),
-	Access(EAdsAccessType::None),
+	Access(EAdsAccessMode::None),
 	Error(0),
 	ValidAds(false),
 	Value(0.0f),
@@ -123,18 +123,18 @@ size_t UTcAdsVariable::transferSize() const
 {
 	switch (Access)
 	{
-	case EAdsAccessType::None: break;
-	case EAdsAccessType::Read:
+	case EAdsAccessMode::None: break;
+	case EAdsAccessMode::Read:
 		return readSize();
 	// case EAdsAccessType::ReadCyclic:
 	// 	// Fallthrough
 	// case EAdsAccessType::ReadOnChange:
 	// 	return _symbolEntry.size;
-	case EAdsAccessType::Write:
+	case EAdsAccessMode::Write:
 		// Fallthrough
-	case EAdsAccessType::WriteOnChange:
+	case EAdsAccessMode::WriteOnChange:
 		// Fallthrough
-	case EAdsAccessType::ReadWriteOnChange:
+	case EAdsAccessMode::ReadWriteOnChange:
 		return writeSize();
 	default: ;
 	}

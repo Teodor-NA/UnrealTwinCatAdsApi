@@ -191,21 +191,21 @@ void ATcAdsMaster::removeVariable(UTcAdsVariable* variable)
 	
 	switch (variable->Access)
 	{
-	case EAdsAccessType::None: break;
-	case EAdsAccessType::Read:
+	case EAdsAccessMode::None: break;
+	case EAdsAccessMode::Read:
 		removeVariablePrivate(variable, ReadVariableList);
 		break;
-	case EAdsAccessType::ReadCyclic:
+	case EAdsAccessMode::ReadCyclic:
 		// Fallthrough
-	case EAdsAccessType::ReadOnChange:
+	case EAdsAccessMode::ReadOnChange:
 		removeCallbackVariable(variable);
 		break;
-	case EAdsAccessType::ReadWriteOnChange:
+	case EAdsAccessMode::ReadWriteOnChange:
 		removeCallbackVariable(variable);
 		// Fallthrough
-	case EAdsAccessType::Write:
+	case EAdsAccessMode::Write:
 		// Fallthrough
-	case EAdsAccessType::WriteOnChange:
+	case EAdsAccessMode::WriteOnChange:
 		removeVariablePrivate(variable, WriteVariableList);
 		break;
 	default: ;
@@ -339,24 +339,24 @@ void ATcAdsMaster::addVariable(UTcAdsVariable* variable)
 		switch (variable->Access)
 		{
 		//	case EAdsAccessType::None: break; // Invalid
-		case EAdsAccessType::Read:
+		case EAdsAccessMode::Read:
 			ReadVariableList.Add(variable);
 			break;
-		case EAdsAccessType::ReadCyclic:
+		case EAdsAccessMode::ReadCyclic:
 		{
 			TcAdsCallbackStruct temp(variable, _CallbackList.Num());
 			variable->setupCallbackVariable(AdsPort, &_remoteAmsAddress, ADSTRANS_SERVERCYCLE, temp);
 			if (!variable->Error)
 				_CallbackList.Emplace(temp);
 		} break;
-		case EAdsAccessType::ReadOnChange:
+		case EAdsAccessMode::ReadOnChange:
 		{
 			TcAdsCallbackStruct temp(variable, _CallbackList.Num());
 			variable->setupCallbackVariable(AdsPort, &_remoteAmsAddress, ADSTRANS_SERVERONCHA, temp);
 			if (!variable->Error)
 				_CallbackList.Emplace(temp);
 		} break;
-		case EAdsAccessType::ReadWriteOnChange:
+		case EAdsAccessMode::ReadWriteOnChange:
 		{
 			TcAdsCallbackStruct temp(variable, _CallbackList.Num());
 			variable->setupCallbackVariable(AdsPort, &_remoteAmsAddress, ADSTRANS_SERVERONCHA, temp);
@@ -364,9 +364,9 @@ void ATcAdsMaster::addVariable(UTcAdsVariable* variable)
 				_CallbackList.Emplace(temp);
 		}
 			// Fallthrough
-		case EAdsAccessType::Write:
+		case EAdsAccessMode::Write:
 			// Fallthrough
-		case EAdsAccessType::WriteOnChange:
+		case EAdsAccessMode::WriteOnChange:
 			if (!variable->Error)
 				WriteVariableList.Add(variable);
 			break;

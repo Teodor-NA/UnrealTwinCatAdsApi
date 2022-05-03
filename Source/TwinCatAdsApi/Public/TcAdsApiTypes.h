@@ -4,9 +4,17 @@
 // Forward declarations
 class UTcAdsVariable;
 class ATcAdsMaster;
-class UTcAdsVariable;
-// class FTcAdsAsyncVariable;
+
+class UTcAdsAsyncVariable;
 class ATcAdsAsyncMaster;
+
+// Create custom UE log category
+DECLARE_LOG_CATEGORY_EXTERN(LogTcAds, Display, Log);
+
+// Custom log macros
+#define LOG_TCADS_DISPLAY(message, ...) UE_LOG(LogTcAds, Display, TEXT(message), __VA_ARGS__)
+#define LOG_TCADS_WARNING(message, ...) UE_LOG(LogTcAds, Warning, TEXT(message), __VA_ARGS__)
+#define LOG_TCADS_ERROR(message, ...) UE_LOG(LogTcAds, Error, TEXT(message), __VA_ARGS__)
 
 // Making the type enum explicitly since including wtypes.h seems to break Unreal
 
@@ -108,7 +116,7 @@ enum class EAdsDataTypeId : uint32
 };
 
 UENUM(BlueprintType)
-enum class EAdsAccessType : uint8
+enum class EAdsAccessMode : uint8
 {
 	// Disabled
 	None = 0 UMETA(DisplayName = "None"),
@@ -138,9 +146,9 @@ FString GetEnumTypeName(EnumType val, const TCHAR* name)
 
 // #define TCADS_GET_ENUM_NAME(type, val) GetEnumTypeName<type>(val, TEXT("#type"))
 
-inline FString GetAdsAccessTypeName(EAdsAccessType val)
+inline FString GetAdsAccessTypeName(EAdsAccessMode val)
 {
-	return GetEnumTypeName<EAdsAccessType>(val, TEXT("EAdsAccessType"));
+	return GetEnumTypeName<EAdsAccessMode>(val, TEXT("EAdsAccessMode"));
 }
 
 // constexpr const TCHAR* AdsAccessTypeName(EAdsAccessType type)
@@ -263,12 +271,4 @@ struct TcAdsCallbackStruct
 	bool operator ==(const UTcAdsVariable* other) const { return (other == variable);}
 	bool operator !=(const UTcAdsVariable* other) const { return (other != variable);}
 };
-
-// Create custom UE log category
-DECLARE_LOG_CATEGORY_EXTERN(LogTcAds, Display, Log);
-
-// Custom log macros
-#define LOG_TCADS_DISPLAY(message, ...) UE_LOG(LogTcAds, Display, TEXT(message), __VA_ARGS__)
-#define LOG_TCADS_WARNING(message, ...) UE_LOG(LogTcAds, Warning, TEXT(message), __VA_ARGS__)
-#define LOG_TCADS_ERROR(message, ...) UE_LOG(LogTcAds, Error, TEXT(message), __VA_ARGS__)
 
