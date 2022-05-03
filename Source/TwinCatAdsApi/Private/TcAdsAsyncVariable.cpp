@@ -1,12 +1,12 @@
 ﻿#include "TcAdsAsyncVariable.h"
-
-#include "TcAdsApiTypes.h"
 #include "TcAdsAsyncMaster.h"
+#include "TcAdsAsyncVariable_Private.h"
 
 UTcAdsAsyncVariable::UTcAdsAsyncVariable()
 	: _variable(nullptr)
 	, adsMode(EAdsAccessMode::None)
 	, initialValue(0.0f)
+	, updateInterval(0)
 {
 	PrimaryComponentTick.bCanEverTick = false;
 
@@ -41,7 +41,7 @@ void UTcAdsAsyncVariable::BeginPlay()
 	Super::BeginPlay();
 
 	if (adsMaster)
-		adsMaster->createVariable(this);
+		_variable = adsMaster->createVariable(this);
 	else
 	{
 		LOG_TCADS_WARNING("Cannot create ADS '%s(%d)' variable '%s'. No master is connected"

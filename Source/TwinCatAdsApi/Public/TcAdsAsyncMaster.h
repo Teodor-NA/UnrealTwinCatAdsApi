@@ -2,9 +2,11 @@
 
 #pragma once
 
+#include <mutex>
+
 #include "CoreMinimal.h"
 #include "TcAdsApiTypes.h"
-#include "TcAdsAsyncVariable_Private.h"
+#include "TcAdsDef.h"
 #include "GameFramework/Actor.h"
 #include "TcAdsAsyncMaster.generated.h"
 
@@ -79,8 +81,8 @@ public:
 	// Sets default values for this actor's properties
 	ATcAdsAsyncMaster();
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timing", meta = (DisplayName = "Refresh rate [s]"))
-	float refreshRate;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timing", meta = (DisplayName = "Base Time [s]"))
+	float baseTime;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Remote ADS Info", meta = (DisplayName = "Remote AMS Net Id"))
 	FString remoteAmsNetId;
@@ -90,7 +92,7 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Local ADS Info", meta = (DisplayName = "Local AMS Address"))
 	FString localAmsAddress;
 
-	void createVariable(UTcAdsAsyncVariable* variable);
+	FTcAdsAsyncVariable* createVariable(UTcAdsAsyncVariable* variable);
 	
 protected:
 	// Called when the game starts or when spawned

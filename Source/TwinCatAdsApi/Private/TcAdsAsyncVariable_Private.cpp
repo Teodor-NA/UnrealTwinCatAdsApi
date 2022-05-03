@@ -6,8 +6,11 @@
 
 FTcAdsAsyncVariable::FTcAdsAsyncVariable(UTcAdsAsyncVariable* reference)
 	: TTcAdsValueStruct({reference->initialValue, 0})
-	, _symbolEntry({0, 0,0, 0, 0, 0, 0, 0, 0})
+	, _updateMode(GetAdsUpdateMode(reference->adsMode))
+	, _updateCounter(reference->updateInterval)
 	, _reference(reference)
+	, _updateInterval(reference->updateInterval)
+	, _symbolEntry({0, 0,0, 0, 0, 0, 0, 0, 0})
 {
 }
 
@@ -146,9 +149,18 @@ size_t FTcAdsAsyncVariable::pack(void* pValueDst, void* pSymbolDst)
 	return tmp;
 }
 
-size_t FTcAdsAsyncVariable::unpack(const void* pValueSrc, const void* pErrorSrc)
+size_t FTcAdsAsyncVariable::unpack(const void* pValueSrc, ErrorType errorIn, const void* pErrorSrc)
 {
 	_mutexLock.lock();
+
+	if (errorIn)
+	{
+		adsError = errorIn;
+		size_t tmp = _symbolEntry.size;
+		_mutexLock.unlock();
+		return tmp;
+	}
+	
 	switch (_getDataType())
 	{
 	// case EAdsDataTypeId::ADST_VOID: // Invalid
@@ -193,7 +205,7 @@ size_t FTcAdsAsyncVariable::unpack(const void* pValueSrc, const void* pErrorSrc)
 	}
 
 	if (pErrorSrc)
-		adsError = *static_cast<const ErrorType*>( pErrorSrc);
+		adsError = *static_cast<const ErrorType*>(pErrorSrc);
 	
 	size_t tmp = _symbolEntry.size;
 
@@ -202,7 +214,7 @@ size_t FTcAdsAsyncVariable::unpack(const void* pValueSrc, const void* pErrorSrc)
 	return tmp;
 }
 
-FTcAdsAsyncVariable::ErrorType FTcAdsAsyncVariable::getSymbolEntry(const FString& adsName, LONG adsPort, AmsAddr* amsAddr)
+FTcAdsAsyncVariable::ErrorType FTcAdsAsyncVariable::fetchSymbolEntry(const FString& adsName, LONG adsPort, AmsAddr* amsAddr)
 {
 	if (adsName == TEXT(""))
 		return setError(ADSERR_DEVICE_INVALIDPARM);
@@ -227,4 +239,19 @@ FTcAdsAsyncVariable::ErrorType FTcAdsAsyncVariable::getSymbolEntry(const FString
 	_mutexLock.unlock();
 	
 	return err;
+}
+
+EAdsUpdateMode FTcAdsAsyncVariable::readyForUpdate()
+{
+	// // Variable is not updated or remotely updated
+	// if (_updateMode == EAdsUpdateMode::None)
+	// 	return _updateMode;
+
+	if (++_updateCounter >= _updateInterval)
+	{
+		_updateCounter = 0;
+		return _updateMode;
+	}
+
+	return EAdsUpdateMode::None;
 }

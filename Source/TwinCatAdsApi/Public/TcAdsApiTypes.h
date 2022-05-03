@@ -7,6 +7,8 @@ class ATcAdsMaster;
 
 class UTcAdsAsyncVariable;
 class ATcAdsAsyncMaster;
+class FTcAdsAsyncWorker;
+class FTcAdsAsyncVariable;
 
 // Create custom UE log category
 DECLARE_LOG_CATEGORY_EXTERN(LogTcAds, Display, Log);
@@ -115,23 +117,26 @@ enum class EAdsDataTypeId : uint32
 	ADST_MAXTYPES = 67
 };
 
+constexpr uint8 EAdsReadFlag = 0x40;
+constexpr uint8 EAdsWriteFlag = 0x80;
+
 UENUM(BlueprintType)
 enum class EAdsAccessMode : uint8
 {
 	// Disabled
-	None = 0 UMETA(DisplayName = "None"),
-	// Read on local cycle
-	Read  UMETA(DisplayName = "Read"),
+	None = 0x0  UMETA(DisplayName = "None"),
 	// Read on remote cycle
 	ReadCyclic  UMETA(DisplayName = "Read Cyclic"),
 	// Read on change
 	ReadOnChange  UMETA(DisplayName = "Read On Change"),
+	// Read on local cycle
+	Read = EAdsReadFlag  UMETA(DisplayName = "Read"),
 	// Write on local cycle
-	Write  UMETA(DisplayName = "Write"),
+	Write = EAdsWriteFlag  UMETA(DisplayName = "Write"),
 	// Write on change
 	WriteOnChange  UMETA(DisplayName = "Write On Change"),
 	// Read and write on change
-	ReadWriteOnChange UMETA(DisplayName = "Read/Write On Change")
+	ReadWriteOnChange  UMETA(DisplayName = "Read/Write On Change")
 };
 
 template<typename EnumType>
@@ -151,26 +156,19 @@ inline FString GetAdsAccessTypeName(EAdsAccessMode val)
 	return GetEnumTypeName<EAdsAccessMode>(val, TEXT("EAdsAccessMode"));
 }
 
-// constexpr const TCHAR* AdsAccessTypeName(EAdsAccessType type)
-// {
-// 	switch (type)
-// 	{
-// 	case EAdsAccessType::None:
-// 		return TEXT("None");
-// 	case EAdsAccessType::Read:
-// 		return TEXT("Read");
-// 	case EAdsAccessType::Write:
-// 		return TEXT("Write");
-// 	case EAdsAccessType::ReadCyclic:
-// 		return TEXT("Read cyclic");
-// 	case EAdsAccessType::ReadOnChange:
-// 		return TEXT("Read on change");
-// 	case EAdsAccessType::WriteOnChange:
-// 		return TEXT("Write on change");
-// 	default:
-// 		return TEXT("Invalid");
-// 	}
-// }
+enum class EAdsUpdateMode : uint8
+{
+	None = 0x0,
+	Read = EAdsReadFlag,
+	Write = EAdsWriteFlag,
+	ReadWrite = EAdsReadFlag | EAdsWriteFlag
+};
+
+constexpr EAdsUpdateMode GetAdsUpdateMode(EAdsAccessMode accessMode)
+{
+	return static_cast<EAdsUpdateMode>(static_cast<uint8>(accessMode) & static_cast<uint8>(EAdsReadFlag | EAdsWriteFlag));
+}
+
 
 // Struct for getting data from ADS using ADSIGRP_SUMUP_READ or ADSIGRP_SUMUP_WRITE
 struct FDataPar

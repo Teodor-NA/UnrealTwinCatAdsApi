@@ -1,11 +1,10 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
-#include "TcAdsAsyncMaster.h"
-
+#include "TcAdsDef.h"
 #include "TcAdsAPI.h"
+#include "TcAdsAsyncMaster.h"
 #include "TcAdsAsyncVariable.h"
-#include "TcAdsVariable.h"
+#include "TcAdsAsyncVariable_Private.h"
 #include "Misc/DefaultValueHelper.h"
 
 
@@ -43,7 +42,8 @@ FTcAdsAsyncWorker::~FTcAdsAsyncWorker()
 {
 	if (!_thread)
 		return;
-
+	
+	_mutexLock.lock();
 	for (auto var : _variableList)
 	{
 		if (var)
@@ -52,10 +52,12 @@ FTcAdsAsyncWorker::~FTcAdsAsyncWorker()
 			var = nullptr;
 		}
 	}
+	_mutexLock.unlock();
 	
 	LOG_TCADS_DISPLAY("Destroying thread %u: %s", _thread->GetThreadID(), *_thread->GetThreadName());
 	delete _thread;
 	_thread = nullptr;
+
 }
 
 AmsAddr FTcAdsAsyncWorker::ParseAmsAddress(const FString& netId, int32 port)
@@ -148,13 +150,84 @@ uint32 FTcAdsAsyncWorker::Run()
 		
 		FPlatformProcess::Sleep(0.1f);
 	}
+
+	TArray<FTcAdsAsyncVariable*> readList;
+	TArray<FTcAdsAsyncVariable*> writeList;
 	
 	while (_stopTaskCounter.GetValue() == 0)
 	{
 		double loopTick = FPlatformTime::Seconds();
 
-		// Do stuff
+		// --------------------v Worker loop v-------------------------
+
+		size_t readBufferSize = 0;
+		size_t writeBufferSize = 0;
 		
+		_mutexLock.lock();
+		for (auto adsVar : _variableList)
+		{
+			auto ready = adsVar->readyForUpdate();
+
+			if (static_cast<uint8>(ready) & EAdsReadFlag)
+			{
+				readList.Add(adsVar);
+				readBufferSize += adsVar->readSize();
+			}
+			if (static_cast<uint8>(ready) & EAdsWriteFlag)
+			{
+				writeList.Add(adsVar);
+				writeBufferSize += adsVar->writeSize();
+			}
+		}
+
+		// copy out what we need for communication so that we can release the mutex lock
+		auto adsPort = _adsPort;
+		auto amsAddress = _remoteAmsAddr;
+		
+		_mutexLock.unlock();
+
+		if (readList.Num() > 0)
+		{
+			TArray<char> readBuffer;
+			readBuffer.SetNumUninitialized(readBufferSize);
+			TArray<FDataPar> readReqBuffer;
+			readReqBuffer.Reserve(readList.Num());
+
+			for (auto adsVar : readList)
+			{
+				readReqBuffer.Emplace(adsVar->getDataPar());
+			}
+
+			unsigned long bytesRead;
+			long err = AdsSyncReadWriteReqEx2(
+				adsPort,
+				&amsAddress,
+				ADSIGRP_SUMUP_READ,
+				readReqBuffer.Num(),
+				readBuffer.Num(),
+				readBuffer.GetData(),
+				readReqBuffer.Num()*readReqBuffer.GetTypeSize(),
+				readReqBuffer.GetData(),
+				&bytesRead
+			);
+
+			// Unpack received data
+			char* pError = readBuffer.GetData();
+			char* pData = pError + readList.Num()*sizeof(LONG);
+			
+			for (auto adsVar : readList)
+			{
+				pData += adsVar->unpack(pData, err, pError);
+				pError += sizeof(LONG);
+			}
+		}
+		
+		// Reset lists without changing allocation so that hopefully the arrays grow to a certain size and then stays there
+		readList.Reset();
+		writeList.Reset();
+
+		// --------------------^ Worker loop ^-------------------------
+
 		double loopTime = FPlatformTime::Seconds() - loopTick;
 		double sleepTime = _refreshRate - loopTime;
 
@@ -324,7 +397,7 @@ FTcAdsAsyncVariable* FTcAdsAsyncWorker::CreateVariable(UTcAdsAsyncVariable* vari
 		return nullptr;
 	}
 
-	auto err = obj->getSymbolEntry(variable->adsName, _Instance->_adsPort, &_Instance->_remoteAmsAddr);
+	auto err = obj->fetchSymbolEntry(variable->adsName, _Instance->_adsPort, &_Instance->_remoteAmsAddr);
 
 	if (err)
 	{
@@ -339,19 +412,24 @@ FTcAdsAsyncVariable* FTcAdsAsyncWorker::CreateVariable(UTcAdsAsyncVariable* vari
 		return nullptr;
 	}
 
+	// Lock while working on the variable list array since this can be accessed by the main thread and the worker
+	_Instance->_mutexLock.lock();
 	_Instance->_variableList.Add(obj);
+	_Instance->_mutexLock.unlock();
+
 	LOG_TCADS_DISPLAY("Created new '%s(%d)' variable '%s'"
 		, *GetAdsAccessTypeName(variable->adsMode)
 		, variable->adsMode
 		, *variable->adsName
 	);
 
+
 	return obj;
 }
 
 // Sets default values
 ATcAdsAsyncMaster::ATcAdsAsyncMaster()
-	: refreshRate(0.1f)
+	: baseTime(0.1f)
 	, remoteAmsNetId(TEXT("127.0.0.1.1.1"))
 	, remoteAmsPort(851)
 	, _asyncWorker(nullptr)
@@ -361,24 +439,28 @@ ATcAdsAsyncMaster::ATcAdsAsyncMaster()
 
 }
 
-void ATcAdsAsyncMaster::createVariable(UTcAdsAsyncVariable* variable)
+FTcAdsAsyncVariable* ATcAdsAsyncMaster::createVariable(UTcAdsAsyncVariable* variable)
 {
+	FTcAdsAsyncVariable* tmp = nullptr;
 	if (_asyncWorker->IsValid())
-		_asyncWorker->CreateVariable(variable);
+		tmp = _asyncWorker->CreateVariable(variable);
 	else
 		_variableQueue.Add(variable);
+
+	return tmp;
 }
 // Called when the game starts or when spawned
 void ATcAdsAsyncMaster::BeginPlay()
 {
 	Super::BeginPlay();
 
-	_asyncWorker = FTcAdsAsyncWorker::Create(remoteAmsNetId, remoteAmsPort, refreshRate);
+	_asyncWorker = FTcAdsAsyncWorker::Create(remoteAmsNetId, remoteAmsPort, baseTime);
 
 	// Check variable queue
 	for (auto var : _variableQueue)
 	{
-		_asyncWorker->CreateVariable(var);
+		auto tmp = _asyncWorker->CreateVariable(var);
+		var->setVariableReference(tmp);
 	}
 
 	_variableQueue.Empty();

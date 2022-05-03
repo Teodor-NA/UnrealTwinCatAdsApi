@@ -37,22 +37,35 @@ public:
 	
 	EAdsDataTypeId getDataType();
 
-	size_t pack(void* pValueDst, void* pSymbolDst);
-	size_t unpack(const void* pValueSrc, const void* pErrorSrc = nullptr);
+	size_t size() const { return _symbolEntry.size; }
+	size_t readSize() const { return (size() + sizeof(ErrorType)); }
+	size_t writeSize() const { return (size() + sizeof(FDataPar)); }
 	
-	ErrorType getSymbolEntry(const FString& adsName, LONG adsPort, AmsAddr* amsAddr);
+	size_t pack(void* pValueDst, void* pSymbolDst);
+	size_t unpack(const void* pValueSrc, ErrorType errorIn = 0, const void* pErrorSrc = nullptr);
+	
+	ErrorType fetchSymbolEntry(const FString& adsName, LONG adsPort, AmsAddr* amsAddr);
+
+	const AdsSymbolEntry& getSymbolEntry() const { return _symbolEntry; }
+	const FDataPar& getDataPar() const { return *reinterpret_cast<const FDataPar*>(&_symbolEntry.iGroup); }
+	
+	EAdsUpdateMode readyForUpdate();
 	
 private:
-	AdsSymbolEntry _symbolEntry;
-	std::mutex _mutexLock;
-
+	EAdsUpdateMode _updateMode;
+	int32 _updateCounter;
 	UTcAdsAsyncVariable* _reference;
+	const int32 _updateInterval;
+	AdsSymbolEntry _symbolEntry;
+	
+	std::mutex _mutexLock;
 	
 	EAdsDataTypeId _getDataType() const { return static_cast<EAdsDataTypeId>(_symbolEntry.dataType); }
 	const FDataPar& _getDataPar() const { return *reinterpret_cast<const FDataPar*>(&_symbolEntry.iGroup); }
 	
 	template <class TDst, class TSrc>
 	static constexpr void _CopyCast(void* pDst, const void* pSrc);
+
 };
 
 template <class TDst, class TSrc>
