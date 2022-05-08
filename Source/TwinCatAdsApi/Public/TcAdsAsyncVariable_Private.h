@@ -23,7 +23,7 @@ public:
 	// using ValueType = ValueType;
 	// using ErrorType = ErrorType;
 
-	explicit FTcAdsAsyncVariable(UTcAdsAsyncVariable* reference);
+	explicit FTcAdsAsyncVariable(UTcAdsAsyncVariable* reference, int32 index);
 	// FTcAdsAsyncVariable(ULONG port, AmsAddr* addr, float initialValue = 0);
 	~FTcAdsAsyncVariable();
 
@@ -31,31 +31,38 @@ public:
 	ValueType getValue();
 	ErrorType getError();
 
-	ValueType setValue(ValueType val, ErrorType error);
-	ValueType setValue(ValueType val);
+//	ValueType setValue(ValueType val, ErrorType error);
+	ErrorType setValue(ValueType val);
 	ErrorType setError(ErrorType error);
 	
 	EAdsDataTypeId getDataType();
+	int32 getIndex();
+	EAdsAccessMode getAdsMode();
 
 	size_t size() const { return _symbolEntry.size; }
 	size_t readSize() const { return (size() + sizeof(ErrorType)); }
 	size_t writeSize() const { return (size() + sizeof(FDataPar)); }
 	
 	size_t pack(void* pValueDst, void* pSymbolDst);
-	size_t unpack(const void* pValueSrc, ErrorType errorIn = 0, const void* pErrorSrc = nullptr);
+	size_t unpack(const void* pValueSrc, bool overwritePrevVal, ErrorType errorIn = 0, const void* pErrorSrc = nullptr);
 	
 	ErrorType fetchSymbolEntry(const FString& adsName, LONG adsPort, AmsAddr* amsAddr);
+	ErrorType setCallback(LONG port, AmsAddr* amsAddr, ULONG cycleTime);
+	ErrorType releaseCallback(LONG port, AmsAddr* amsAddr);
 
 	const AdsSymbolEntry& getSymbolEntry() const { return _symbolEntry; }
 	const FDataPar& getDataPar() const { return *reinterpret_cast<const FDataPar*>(&_symbolEntry.iGroup); }
 	
-	EAdsUpdateMode readyForUpdate();
+	EAdsAccessMode readyForUpdate();
 	
 private:
-	EAdsUpdateMode _updateMode;
+	const EAdsAccessMode _adsMode;
 	int32 _updateCounter;
-	UTcAdsAsyncVariable* _reference;
 	const int32 _updateInterval;
+	float _prevVal;
+	int32 _index;
+	uint32 _notification;
+	UTcAdsAsyncVariable* _reference;
 	AdsSymbolEntry _symbolEntry;
 	
 	std::mutex _mutexLock;

@@ -1,16 +1,22 @@
 ﻿#include "TcAdsAsyncVariable_Private.h"
 
 #include "TcAdsAPI.h"
+#include "TcAdsAsyncMaster.h"
 #include "TcAdsAsyncVariable.h"
 
 
-FTcAdsAsyncVariable::FTcAdsAsyncVariable(UTcAdsAsyncVariable* reference)
-	: TTcAdsValueStruct({reference->initialValue, 0})
-	, _updateMode(GetAdsUpdateMode(reference->adsMode))
-	, _updateCounter(reference->updateInterval)
+FTcAdsAsyncVariable::FTcAdsAsyncVariable(UTcAdsAsyncVariable* reference, int32 index)
+	: TTcAdsValueStruct({reference->adsSetupInfo.initialValue, 0})
+	, _adsMode(reference->adsSetupInfo.adsMode)
+	// Set the counter to interval to update on first tick
+	, _updateCounter(reference->adsSetupInfo.cycleMultiplier)
+	, _updateInterval(reference->adsSetupInfo.cycleMultiplier)
+	// Make the prev value different than the initial value to force update on first tick
+	, _prevVal(reference->adsSetupInfo.initialValue + 1.0f)
+	, _index(index)
+	, _notification(0)
 	, _reference(reference)
-	, _updateInterval(reference->updateInterval)
-	, _symbolEntry({0, 0,0, 0, 0, 0, 0, 0, 0})
+	, _symbolEntry({0, 0, 0, 0, 0, 0, 0, 0, 0})
 {
 }
 
@@ -25,78 +31,91 @@ FTcAdsAsyncVariable::~FTcAdsAsyncVariable()
 	// Invalidate reference if it exists
 	if (IsValid(_reference))
 	{
+		// If it is a callback variable, then it must be released
+		if (_notification != 0)
+		{
+			AmsAddr addr = _reference->adsSetupInfo.adsMaster->getRemoteAmsAddr();
+			auto err = releaseCallback(_reference->adsSetupInfo.adsMaster->getLocalAdsPort(), &addr);
+
+			if (err)
+			{
+				LOG_TCADS_ERROR("Failed to release callback for '%s(%d)' variable '%s' from the worker thread. Error code 0x%x"
+					, *GetAdsAccessTypeName(_adsMode)
+					, _adsMode
+					, *_reference->adsSetupInfo.adsName
+					, err
+				);
+			}
+			else
+			{
+				LOG_TCADS_DISPLAY("Released callback for '%s(%d)' variable '%s' from the worker thread"
+					, *GetAdsAccessTypeName(_adsMode)
+					, _adsMode
+					, *_reference->adsSetupInfo.adsName
+				);
+			}
+		}
+		
 		_reference->_variable = nullptr;
-		LOG_TCADS_DISPLAY("Ads variable '%s' was invalidated from worker",
-			*_reference->adsName
+		LOG_TCADS_DISPLAY("Ads variable '%s' was invalidated from the worker thread",
+			*_reference->adsSetupInfo.adsName
 		);
 	}
 }
 
 TTcAdsValueStruct<FTcAdsAsyncVariable::ValueType, FTcAdsAsyncVariable::ErrorType> FTcAdsAsyncVariable::getValueAndError()
 {
-	_mutexLock.lock();
-	TTcAdsValueStruct tmp = *this;
-	_mutexLock.unlock();
-	return tmp;
+	std::lock_guard<std::mutex> lock(_mutexLock);
+	return static_cast<TTcAdsValueStruct>(*this);
 }
 
 FTcAdsAsyncVariable::ValueType FTcAdsAsyncVariable::getValue()
 {
-	_mutexLock.lock();
-	ValueType tmp = adsValue;
-	_mutexLock.unlock();
-	return tmp;
+	std::lock_guard<std::mutex> lock(_mutexLock);
+	return adsValue;
 }
 
 FTcAdsAsyncVariable::ErrorType FTcAdsAsyncVariable::getError()
 {
-	_mutexLock.lock();
-	ErrorType tmp = adsError;
-	_mutexLock.unlock();
-	return tmp;
+	std::lock_guard<std::mutex> lock(_mutexLock);
+	return adsError;
 }
 
-// TTcAdsValueStruct FTcAdsAsyncVariable::getValue()
-// {
-// }
-
-FTcAdsAsyncVariable::ValueType FTcAdsAsyncVariable::setValue(ValueType val, ErrorType error)
+FTcAdsAsyncVariable::ErrorType FTcAdsAsyncVariable::setValue(ValueType val)
 {
-	_mutexLock.lock();
+	std::lock_guard<std::mutex> lock(_mutexLock);
 	adsValue = val;
-	adsError = error;
-	_mutexLock.unlock();
-
-	return val;
-}
-
-FTcAdsAsyncVariable::ValueType FTcAdsAsyncVariable::setValue(ValueType val)
-{
-	_mutexLock.lock();
-	adsValue = val;
-	_mutexLock.unlock();
-	return val;
+	return adsError;
 }
 
 FTcAdsAsyncVariable::ErrorType FTcAdsAsyncVariable::setError(ErrorType error)
 {
-	_mutexLock.lock();
-	adsError = error;
-	_mutexLock.unlock();
-	return error;
+	std::lock_guard<std::mutex> lock(_mutexLock);
+	return (adsError = error);
 }
 
 EAdsDataTypeId FTcAdsAsyncVariable::getDataType()
 {
-	_mutexLock.lock();
-	EAdsDataTypeId tmp = _getDataType();
-	_mutexLock.unlock();
-	return tmp;
+	std::lock_guard<std::mutex> lock(_mutexLock);
+	return _getDataType();
+}
+
+int32 FTcAdsAsyncVariable::getIndex()
+{
+	std::lock_guard<std::mutex> lock(_mutexLock);
+	return _index;
+}
+
+EAdsAccessMode FTcAdsAsyncVariable::getAdsMode()
+{
+	std::lock_guard<std::mutex> lock(_mutexLock);
+	return _adsMode;
 }
 
 size_t FTcAdsAsyncVariable::pack(void* pValueDst, void* pSymbolDst)
 {
-	_mutexLock.lock();
+	std::lock_guard<std::mutex> lock(_mutexLock);
+
 	switch (_getDataType())
 	{
 	// case EAdsDataTypeId::ADST_VOID: // Invalid
@@ -142,23 +161,17 @@ size_t FTcAdsAsyncVariable::pack(void* pValueDst, void* pSymbolDst)
 
 	*static_cast<FDataPar*>(pSymbolDst) = _getDataPar();
 	
-	size_t tmp = _symbolEntry.size;
-
-	_mutexLock.unlock();
-	
-	return tmp;
+	return _symbolEntry.size;
 }
 
-size_t FTcAdsAsyncVariable::unpack(const void* pValueSrc, ErrorType errorIn, const void* pErrorSrc)
+size_t FTcAdsAsyncVariable::unpack(const void* pValueSrc, bool overwritePrevVal, ErrorType errorIn, const void* pErrorSrc)
 {
-	_mutexLock.lock();
+	std::lock_guard<std::mutex> lock(_mutexLock);
 
 	if (errorIn)
 	{
 		adsError = errorIn;
-		size_t tmp = _symbolEntry.size;
-		_mutexLock.unlock();
-		return tmp;
+		return _symbolEntry.size;
 	}
 	
 	switch (_getDataType())
@@ -204,14 +217,13 @@ size_t FTcAdsAsyncVariable::unpack(const void* pValueSrc, ErrorType errorIn, con
 			break;
 	}
 
+	if (overwritePrevVal)
+		_prevVal = adsValue;
+	
 	if (pErrorSrc)
 		adsError = *static_cast<const ErrorType*>(pErrorSrc);
 	
-	size_t tmp = _symbolEntry.size;
-
-	_mutexLock.unlock();
-	
-	return tmp;
+	return _symbolEntry.size;
 }
 
 FTcAdsAsyncVariable::ErrorType FTcAdsAsyncVariable::fetchSymbolEntry(const FString& adsName, LONG adsPort, AmsAddr* amsAddr)
@@ -222,36 +234,145 @@ FTcAdsAsyncVariable::ErrorType FTcAdsAsyncVariable::fetchSymbolEntry(const FStri
 	FSimpleAsciiString varName(adsName);
 	unsigned long bytesRead;
 
-	_mutexLock.lock();
+	AdsSymbolEntry symbolEntry;
+	
 	auto err = AdsSyncReadWriteReqEx2(
 		adsPort,
 		amsAddr,
 		ADSIGRP_SYM_INFOBYNAMEEX,
 		0,
-		sizeof(_symbolEntry),
-		&_symbolEntry,
+		sizeof(symbolEntry),
+		&symbolEntry,
 		varName.byteSize(),
 		varName.getData(),
 		&bytesRead
 	);
 
-	adsError = err;
-	_mutexLock.unlock();
+	{
+		std::lock_guard<std::mutex> lock(_mutexLock);
+	
+		adsError = err;
+		if (!err)
+			_symbolEntry = symbolEntry;
+	
+	}
+
+	return err;
+}
+
+FTcAdsAsyncVariable::ErrorType FTcAdsAsyncVariable::setCallback(LONG port, AmsAddr* amsAddr, ULONG cycleTime)
+{
+	ULONG iGroup, iOffs;
+	int32 hUser;
+
+	AdsNotificationAttrib notificationAttrib;
+	
+	{ // Limit the lock scope so that the PLC call happens unlocked
+		std::lock_guard<std::mutex> lock(_mutexLock);
+		
+		ADSTRANSMODE transMode; 
+		switch (_adsMode)
+		{
+		case EAdsAccessMode::ReadCyclic:
+			transMode = ADSTRANS_SERVERCYCLE;
+			break;
+		case EAdsAccessMode::ReadOnChange:
+			// Fallthrough
+		case EAdsAccessMode::ReadWriteOnChange:
+			transMode = ADSTRANS_SERVERONCHA;
+			break;
+		default:
+			return ADSERR_DEVICE_INVALIDDATA;
+		}
+	
+		notificationAttrib = {
+			_symbolEntry.size,
+			transMode,
+			0,
+			cycleTime
+		};
+
+		iGroup = _symbolEntry.iGroup;
+		iOffs = _symbolEntry.iOffs;
+		hUser = _index;
+	} // end lock
+	
+	ULONG hNotification;
+	// Setup callback
+	auto err = AdsSyncAddDeviceNotificationReqEx(
+		port,
+		amsAddr,
+		iGroup,
+		iOffs,
+		&notificationAttrib,
+		&FTcAdsAsyncWorker::ReadCallback,
+		hUser,
+		&hNotification
+	);
+
+	if (!err)
+	{
+		std::lock_guard<std::mutex> lock(_mutexLock);
+
+		adsError = err;
+		_notification = hNotification;
+	}
+
+	return err;
+}
+
+FTcAdsAsyncVariable::ErrorType FTcAdsAsyncVariable::releaseCallback(LONG port, AmsAddr* amsAddr)
+{
+	uint32 hNotification;
+	{
+		std::lock_guard<std::mutex> lock(_mutexLock);
+		hNotification = _notification;
+	}
+
+	if (hNotification == 0)
+		return 0;
+	
+	auto err = AdsSyncDelDeviceNotificationReqEx(
+		port,
+		amsAddr,
+		hNotification
+	);
+	
+	{
+		std::lock_guard<std::mutex> lock(_mutexLock);
+		adsError = err;
+		_notification = 0;
+	}
 	
 	return err;
 }
 
-EAdsUpdateMode FTcAdsAsyncVariable::readyForUpdate()
+EAdsAccessMode FTcAdsAsyncVariable::readyForUpdate()
 {
-	// // Variable is not updated or remotely updated
-	// if (_updateMode == EAdsUpdateMode::None)
-	// 	return _updateMode;
-
+	// If the value is not updated by the local timer there is no point in checking
+	if (!CheckAdsUpdateFlag(_adsMode, EAdsRemoteReadFlag | EAdsRemoteWriteFlag))
+		return EAdsAccessMode::None;
+	
 	if (++_updateCounter >= _updateInterval)
 	{
+		// If the value is supposed to only be updated on change, we first check if the value has changed
+		if (CheckAdsUpdateFlag(_adsMode, EAdsUpdateOnChange))
+		{
+			// Check if the value has changed (use getValue() for thread safety)
+			float tmp = getValue();
+			if (tmp == _prevVal)
+			{
+				// Decrement counter to avoid overflow
+				--_updateCounter;
+				return EAdsAccessMode::None;
+			}
+
+			_prevVal = tmp;
+		}
+		
 		_updateCounter = 0;
-		return _updateMode;
+		return _adsMode;
 	}
 
-	return EAdsUpdateMode::None;
+	return EAdsAccessMode::None;
 }

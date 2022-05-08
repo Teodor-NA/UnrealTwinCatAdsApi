@@ -1,6 +1,8 @@
 ﻿
 #pragma once
 
+#include "TcAdsApiTypes.generated.h"
+
 // Forward declarations
 class UTcAdsVariable;
 class ATcAdsMaster;
@@ -117,8 +119,12 @@ enum class EAdsDataTypeId : uint32
 	ADST_MAXTYPES = 67
 };
 
-constexpr uint8 EAdsReadFlag = 0x40;
-constexpr uint8 EAdsWriteFlag = 0x80;
+constexpr uint8 EAdsRemoteReadFlag = 0x80;
+constexpr uint8 EAdsRemoteWriteFlag = 0x40;
+constexpr uint8 EAdsLocalReadFlag = 0x20;
+constexpr uint8 EAdsLocalWriteFlag = 0x10;
+constexpr uint8 EAdsUpdateOnChange = 0x8;
+constexpr uint8 EAdsCallbackFlag = 0x4;
 
 UENUM(BlueprintType)
 enum class EAdsAccessMode : uint8
@@ -126,17 +132,40 @@ enum class EAdsAccessMode : uint8
 	// Disabled
 	None = 0x0  UMETA(DisplayName = "None"),
 	// Read on remote cycle
-	ReadCyclic  UMETA(DisplayName = "Read Cyclic"),
+	ReadCyclic
+		= EAdsLocalReadFlag
+		| EAdsCallbackFlag
+		UMETA(DisplayName = "Read Cyclic"),
 	// Read on change
-	ReadOnChange  UMETA(DisplayName = "Read On Change"),
+	ReadOnChange
+		= EAdsLocalReadFlag
+		| EAdsUpdateOnChange
+		| EAdsCallbackFlag
+		UMETA(DisplayName = "Read On Change"),
 	// Read on local cycle
-	Read = EAdsReadFlag  UMETA(DisplayName = "Read"),
+	Read
+		= EAdsRemoteReadFlag
+		| EAdsLocalReadFlag
+		UMETA(DisplayName = "Read"),
 	// Write on local cycle
-	Write = EAdsWriteFlag  UMETA(DisplayName = "Write"),
+	Write
+		= EAdsRemoteWriteFlag
+		| EAdsLocalWriteFlag
+		UMETA(DisplayName = "Write"),
 	// Write on change
-	WriteOnChange  UMETA(DisplayName = "Write On Change"),
+	WriteOnChange
+		= EAdsRemoteWriteFlag
+		| EAdsLocalWriteFlag
+		| EAdsUpdateOnChange
+		UMETA(DisplayName = "Write On Change"),
 	// Read and write on change
-	ReadWriteOnChange  UMETA(DisplayName = "Read/Write On Change")
+	ReadWriteOnChange
+		= EAdsLocalReadFlag
+		| EAdsLocalWriteFlag
+		| EAdsRemoteWriteFlag
+		| EAdsUpdateOnChange
+		| EAdsCallbackFlag
+		UMETA(DisplayName = "Read/Write On Change")
 };
 
 template<typename EnumType>
@@ -149,33 +178,54 @@ FString GetEnumTypeName(EnumType val, const TCHAR* name)
 	return FString(TEXT("Invalid"));
 }
 
-// #define TCADS_GET_ENUM_NAME(type, val) GetEnumTypeName<type>(val, TEXT("#type"))
-
 inline FString GetAdsAccessTypeName(EAdsAccessMode val)
 {
 	return GetEnumTypeName<EAdsAccessMode>(val, TEXT("EAdsAccessMode"));
 }
 
-enum class EAdsUpdateMode : uint8
+template <class T>
+constexpr bool CheckAdsUpdateFlag(T accessMode, uint8 flag) { return (static_cast<uint8>(accessMode) & flag); }
+
+USTRUCT(BlueprintType)
+struct FTcAdsVariableInfo
 {
-	None = 0x0,
-	Read = EAdsReadFlag,
-	Write = EAdsWriteFlag,
-	ReadWrite = EAdsReadFlag | EAdsWriteFlag
+	GENERATED_BODY()
+
+	/**
+	 * @brief Full name of the remote variable (including scope)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ADS Info", meta = (DisplayName = "ADS Name"))
+	FString adsName;
+	/**
+	 * @brief Ads access mode
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ADS Info", meta = (DisplayName = "ADS Access Mode"))
+	EAdsAccessMode adsMode;
+	/**
+	 * @brief Multiple of the connected master's base time interval to update the variable.
+	 * example: if update interval is 3 and the master's base time is 0.01 s the variable will be updated every 0.03 s.
+	 * if value is <= 1 the value will update with every tick
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ADS Info", meta = (DisplayName = "Cyckle Multiplier"))
+	int32 cycleMultiplier;
+	/**
+	 * @brief Current value
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ADS Info", meta = (DisplayName = "Initial Value"))
+	float initialValue;
+	/**
+	 * @brief Instance of master module \link ATcAdsAsyncMaster \endlink to handle the communication
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ADS Info", meta = (DisplayName = "ADS Master"))
+	ATcAdsAsyncMaster* adsMaster;
 };
-
-constexpr EAdsUpdateMode GetAdsUpdateMode(EAdsAccessMode accessMode)
-{
-	return static_cast<EAdsUpdateMode>(static_cast<uint8>(accessMode) & static_cast<uint8>(EAdsReadFlag | EAdsWriteFlag));
-}
-
 
 // Struct for getting data from ADS using ADSIGRP_SUMUP_READ or ADSIGRP_SUMUP_WRITE
 struct FDataPar
 {
-	unsigned long indexGroup;	// index group in ADS server interface
-	unsigned long indexOffset;	// index offset in ADS server interface
-	unsigned long length;		// count of bytes to read	
+	ULONG indexGroup;	// index group in ADS server interface
+	ULONG indexOffset;	// index offset in ADS server interface
+	ULONG length;		// count of bytes to read	
 };
 
 /*!

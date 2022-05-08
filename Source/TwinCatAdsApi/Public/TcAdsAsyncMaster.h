@@ -37,15 +37,33 @@ public:
 
 	static FTcAdsAsyncVariable* CreateVariable(UTcAdsAsyncVariable* variable);
 
+	static void __stdcall ReadCallback(AmsAddr* pAddr, AdsNotificationHeader* pNotification, ULONG hUser);
+
+	static AmsAddr GetRemoteAmsAddr();
+	static LONG GetLocalAdsPort();
+
 private:
 	// Private constructor/destructor
-	explicit FTcAdsAsyncWorker(const FString& remoteAmsNetId, int32 remoteAmsPort, float refreshRate);
+	explicit FTcAdsAsyncWorker(const FString& remoteAmsNetId, int32 remoteAmsPort, float cycleTime);
 	virtual ~FTcAdsAsyncWorker() override;
 
 	// bool isFinished() const { return (_counter >= _numberToCount); }
 
 	static AmsAddr ParseAmsAddress(const FString& netId, int32 port);
+
+	// static LONG _Update(LONG port, AmsAddr amsAddr, TArray<UTcAdsAsyncVariable*>& readList,
+	// 	TArray<UTcAdsAsyncVariable*>& writeList);
+
+	AmsAddr _getRemoteAmsAddr();
+	LONG _getLocalAdsPort();
 	
+	static LONG _ReadValues(LONG port, AmsAddr* amsAddr,
+		TArray<FTcAdsAsyncVariable*>& readList, size_t readBufferSize);
+
+	static LONG _WriteValues(LONG port, AmsAddr* amsAddr,
+		TArray<FTcAdsAsyncVariable*>& writeList, size_t writeBufferSize);
+
+	void _releaseHandles();
 	LONG _closePort();
 	
 	TArray<FTcAdsAsyncVariable*> _variableList;
@@ -61,7 +79,7 @@ private:
 	LONG _adsPort;
 	AmsAddr _remoteAmsAddr;
 
-	float _refreshRate;
+	float _cycleTime;
 	
 	// int32 _counter;
 	// int32 _numberToCount;
@@ -93,6 +111,9 @@ public:
 	FString localAmsAddress;
 
 	FTcAdsAsyncVariable* createVariable(UTcAdsAsyncVariable* variable);
+
+	AmsAddr getRemoteAmsAddr() const { return _asyncWorker->GetRemoteAmsAddr(); }
+	LONG getLocalAdsPort() const { return _asyncWorker->GetLocalAdsPort(); }
 	
 protected:
 	// Called when the game starts or when spawned
@@ -102,4 +123,5 @@ protected:
 private:
 	FTcAdsAsyncWorker* _asyncWorker;
 	TArray<UTcAdsAsyncVariable*> _variableQueue;
+
 };
