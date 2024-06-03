@@ -15,6 +15,7 @@ ATcAdsMaster::ATcAdsMaster() :
 	_remoteAmsAddress({{0, 0, 0, 0, 0, 0}, 0}),
 	ReadValuesInterval(0.1f),
 	WriteValuesInterval(0.1f),
+	Timeout(1000),
 	ReadDataRoundTripTime(0.0f),
 	RemoteAmsNetId(TEXT("127.0.0.1.1.1")),
 	RemoteAmsPort(851),
@@ -48,7 +49,7 @@ int32 ATcAdsMaster::openPort()
 	if (RemoteAmsAddressValid)
 	{
 			UE_LOG(LogTcAds, Display,
-				TEXT("Attempting communication with remote AMS Net Id %u.%u.%u.%u.%u.%u:%u"),
+				TEXT("Attempting communication with remote AMS Address %u.%u.%u.%u.%u.%u:%u"),
 				_remoteAmsAddress.netId.b[0],
 				_remoteAmsAddress.netId.b[1],
 				_remoteAmsAddress.netId.b[2],
@@ -82,6 +83,8 @@ int32 ATcAdsMaster::openPort()
 	
 		return (AdsPort = -1);
 	}
+
+	AdsSyncSetTimeoutEx(AdsPort, Timeout);
 	
 	char remoteAsciiDevName[50];
 	AdsVersion remoteVersion;
@@ -169,7 +172,7 @@ void ATcAdsMaster::EndPlay(const EEndPlayReason::Type endPlayReason)
 				adsVar.variable->release();
 	}
 
-	// If we are the last master to end play, then we clean up the callback array
+	// If we are the last master to end play then we clean up the callback array
 	if (--_ActiveMasters == 0)
 		_CallbackList.Empty();
 	
@@ -188,18 +191,21 @@ void ATcAdsMaster::removeVariable(UTcAdsVariable* variable)
 	
 	switch (variable->Access)
 	{
-	case EAdsAccessType::None: break;
-	case EAdsAccessType::Read:
+	case EAdsAccessMode::None: break;
+	case EAdsAccessMode::Read:
 		removeVariablePrivate(variable, ReadVariableList);
 		break;
-	case EAdsAccessType::ReadCyclic:
+	case EAdsAccessMode::ReadCyclic:
+		// Fallthrough
+	case EAdsAccessMode::ReadOnChange:
 		removeCallbackVariable(variable);
 		break;
-	case EAdsAccessType::ReadOnChange:
+	case EAdsAccessMode::ReadWriteOnChange:
 		removeCallbackVariable(variable);
-		break;
-	case EAdsAccessType::Write:
-	case EAdsAccessType::WriteOnChange:
+		// Fallthrough
+	case EAdsAccessMode::Write:
+		// Fallthrough
+	case EAdsAccessMode::WriteOnChange:
 		removeVariablePrivate(variable, WriteVariableList);
 		break;
 	default: ;
@@ -252,7 +258,8 @@ void ATcAdsMaster::removeVariablePrivate(const UTcAdsVariable* variable, TArray<
 		UE_LOG(LogTcAds, Warning,
 			TEXT("No variable '%s' found in %s list. No action taken"),
 			*variable->AdsName,
-			AdsAccessTypeName(variable->Access)
+			*GetAdsAccessTypeName(variable->Access)
+//			AdsAccessTypeName(variable->Access)
 		);
 		
 		return;
@@ -285,17 +292,28 @@ void ATcAdsMaster::removeCallbackVariable(UTcAdsVariable* variable)
 
 void ATcAdsMaster::ReadCallback(AmsAddr* pAddr, AdsNotificationHeader* pNotification, ULONG hUser)
 {
-	for (auto& callback : _CallbackList)
-	{
-		if (!IsValid(callback.variable))
-			continue;
-		
-		if (callback.hUser == hUser)
-		{
-			callback.variable->unpackValue(reinterpret_cast<char*>(pNotification->data));
-			return;
-		}
-	}
+	if  (
+			!(
+				((static_cast<int32>(hUser) < _CallbackList.Num()) || (static_cast<int32>(hUser) < 0))
+				&& UTcAdsVariable::ValidAdsVariable(_CallbackList[hUser].variable)
+				&& (_CallbackList[hUser].index == hUser)
+			)
+		)
+		return;
+
+	_CallbackList[hUser].variable->unpackValue(reinterpret_cast<char*>(pNotification->data));
+	
+	// for (auto& callback : _CallbackList)
+	// {
+	// 	if (!IsValid(callback.variable))
+	// 		continue;
+	// 	
+	// 	if (callback.hUser == hUser)
+	// 	{
+	// 		callback.variable->unpackValue(reinterpret_cast<char*>(pNotification->data));
+	// 		return;
+	// 	}
+	// }
 }
 
 // Called every frame
@@ -315,52 +333,55 @@ void ATcAdsMaster::addVariable(UTcAdsVariable* variable)
 	if (openPort() <= 0)
 		return;
 
-	uint32 err = ADSERR_DEVICE_INVALIDPARM;
-	
-	switch (variable->Access)
+	variable->getSymbolEntryFromAds(AdsPort, &_remoteAmsAddress);
+	if (!variable->Error)
 	{
-	case EAdsAccessType::None: break;
-	case EAdsAccessType::Read:
-		err = variable->getSymbolEntryFromAds(AdsPort, &_remoteAmsAddress);
-		if (!err)
+		switch (variable->Access)
+		{
+		//	case EAdsAccessType::None: break; // Invalid
+		case EAdsAccessMode::Read:
 			ReadVariableList.Add(variable);
-		break;
-	case EAdsAccessType::ReadCyclic:
-		err = variable->getSymbolEntryFromAds(AdsPort, &_remoteAmsAddress);
-		if (!err)
+			break;
+		case EAdsAccessMode::ReadCyclic:
 		{
-			TcAdsCallbackStruct temp(variable);
-			err = variable->setupCallbackVariable(AdsPort, &_remoteAmsAddress, ADSTRANS_SERVERCYCLE, temp);
-			if (!err)
+			TcAdsCallbackStruct temp(variable, _CallbackList.Num());
+			variable->setupCallbackVariable(AdsPort, &_remoteAmsAddress, ADSTRANS_SERVERCYCLE, temp);
+			if (!variable->Error)
+				_CallbackList.Emplace(temp);
+		} break;
+		case EAdsAccessMode::ReadOnChange:
+		{
+			TcAdsCallbackStruct temp(variable, _CallbackList.Num());
+			variable->setupCallbackVariable(AdsPort, &_remoteAmsAddress, ADSTRANS_SERVERONCHA, temp);
+			if (!variable->Error)
+				_CallbackList.Emplace(temp);
+		} break;
+		case EAdsAccessMode::ReadWriteOnChange:
+		{
+			TcAdsCallbackStruct temp(variable, _CallbackList.Num());
+			variable->setupCallbackVariable(AdsPort, &_remoteAmsAddress, ADSTRANS_SERVERONCHA, temp);
+			if (!variable->Error)
 				_CallbackList.Emplace(temp);
 		}
-		break;
-	case EAdsAccessType::ReadOnChange:
-		err = variable->getSymbolEntryFromAds(AdsPort, &_remoteAmsAddress);
-		if (!err)
-		{
-			TcAdsCallbackStruct temp(variable);
-			err = variable->setupCallbackVariable(AdsPort, &_remoteAmsAddress, ADSTRANS_SERVERONCHA, temp);
-			if (!err)
-				_CallbackList.Emplace(temp);
+			// Fallthrough
+		case EAdsAccessMode::Write:
+			// Fallthrough
+		case EAdsAccessMode::WriteOnChange:
+			if (!variable->Error)
+				WriteVariableList.Add(variable);
+			break;
+		default: variable->Error = ADSERR_DEVICE_INVALIDPARM;
 		}
-		break;
-	case EAdsAccessType::Write:
-	case EAdsAccessType::WriteOnChange:
-		err = variable->getSymbolEntryFromAds(AdsPort, &_remoteAmsAddress);
-		if (!err)
-			WriteVariableList.Add(variable);
-		break;
-	default: ;
 	}
 	
-	if (err)
+	if (variable->Error)
 	{
 		UE_LOG(LogTcAds, Error,
 			TEXT("Failed to subscribe to '%s' variable '%s'. Error code 0x%x"),
-			AdsAccessTypeName(variable->Access),
+			*GetAdsAccessTypeName(variable->Access),
+//			AdsAccessTypeName(variable->Access),
 			*variable->AdsName,
-			err
+			variable->Error
 		);
 
 		return;
@@ -368,7 +389,8 @@ void ATcAdsMaster::addVariable(UTcAdsVariable* variable)
 
 	UE_LOG(LogTcAds, Display,
 		TEXT("Successfully subscribed to '%s' variable '%s'"),
-		AdsAccessTypeName(variable->Access),
+		*GetAdsAccessTypeName(variable->Access),
+//		AdsAccessTypeName(variable->Access),
 		*variable->AdsName
 	);
 }

@@ -40,7 +40,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ads Info")
 	FString AdsName;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ads Info")
-	EAdsAccessType Access;
+	EAdsAccessMode Access;
 	UPROPERTY(VisibleAnywhere, Category = "Ads Info")
 	int32 Error;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ads Info")
@@ -87,7 +87,7 @@ public:
 	// For internal use. Don't use this
 	bool valueChanged();
 	// For internal use. Don't use this
-	bool readyToWrite() { return ((Access == EAdsAccessType::WriteOnChange) ? valueChanged() : true); }
+	bool readyToWrite() { return (((Access == EAdsAccessMode::WriteOnChange) || (Access == EAdsAccessMode::ReadWriteOnChange)) ? valueChanged() : true); }
 
 	static bool ValidAdsVariable(const UTcAdsVariable* variable);
 
@@ -95,15 +95,8 @@ public:
 	const FDataPar& reqData() const { return *reinterpret_cast<const FDataPar*>(&_symbolEntry.iGroup); }
 	
 private:
-	// FDataPar _dataPar;
 	AdsSymbolEntry _symbolEntry;
 	
-	// UPROPERTY(VisibleAnywhere, Category = "Ads Info")
-	// EAdsDataTypeId _dataType;
-
-	// UPROPERTY(VisibleAnywhere, Category = "Ads Info")
-	// uint32 _size;
-
 	float _prevVal;
 };
 

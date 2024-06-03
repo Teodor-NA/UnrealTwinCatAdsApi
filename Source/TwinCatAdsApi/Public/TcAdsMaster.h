@@ -27,6 +27,7 @@ public:
 	void readValues();
 	void writeValues();
 
+
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
@@ -64,6 +65,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time",
 		meta = (DisplayName = "Write Values Interval [s]"))
 	float WriteValuesInterval;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time",
+		meta = (DisplayName = "ADS call timeout [ms]"))
+	int64 Timeout;
 	// Measures the round trip time of reading remote variables on local cycle [ms]
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Time",
 		meta = (DisplayName = "Read Data Round Trip Time [ms]"))

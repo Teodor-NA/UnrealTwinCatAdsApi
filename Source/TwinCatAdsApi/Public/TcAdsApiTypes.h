@@ -1,14 +1,24 @@
 ﻿
 #pragma once
-// #include "TcAdsVariable.h"
 
-// Needed for USTRUCT()
-// #include "CoreMinimal.h"
-// #include "TcAdsApiTypes.generated.h"
+#include "TcAdsApiTypes.generated.h"
 
 // Forward declarations
 class UTcAdsVariable;
 class ATcAdsMaster;
+
+class UTcAdsAsyncVariable;
+class ATcAdsAsyncMaster;
+class FTcAdsAsyncWorker;
+class FTcAdsAsyncVariable;
+
+// Create custom UE log category
+DECLARE_LOG_CATEGORY_EXTERN(LogTcAds, Display, Log);
+
+// Custom log macros
+#define LOG_TCADS_DISPLAY(message, ...) UE_LOG(LogTcAds, Display, TEXT(message), __VA_ARGS__)
+#define LOG_TCADS_WARNING(message, ...) UE_LOG(LogTcAds, Warning, TEXT(message), __VA_ARGS__)
+#define LOG_TCADS_ERROR(message, ...) UE_LOG(LogTcAds, Error, TEXT(message), __VA_ARGS__)
 
 // Making the type enum explicitly since including wtypes.h seems to break Unreal
 
@@ -109,50 +119,113 @@ enum class EAdsDataTypeId : uint32
 	ADST_MAXTYPES = 67
 };
 
+constexpr uint8 EAdsRemoteReadFlag = 0x80;
+constexpr uint8 EAdsRemoteWriteFlag = 0x40;
+constexpr uint8 EAdsLocalReadFlag = 0x20;
+constexpr uint8 EAdsLocalWriteFlag = 0x10;
+constexpr uint8 EAdsUpdateOnChange = 0x8;
+constexpr uint8 EAdsCallbackFlag = 0x4;
+
 UENUM(BlueprintType)
-enum class EAdsAccessType : uint8
+enum class EAdsAccessMode : uint8
 {
 	// Disabled
-	None = 0 UMETA(DisplayName = "None"),
-	// Read on local cycle
-	Read  UMETA(DisplayName = "Read"),
+	None = 0x0  UMETA(DisplayName = "None"),
 	// Read on remote cycle
-	ReadCyclic  UMETA(DisplayName = "Read Cyclic"),
+	ReadCyclic
+		= EAdsLocalReadFlag
+		| EAdsCallbackFlag
+		UMETA(DisplayName = "Read Cyclic"),
 	// Read on change
-	ReadOnChange  UMETA(DisplayName = "Read On Change"),
+	ReadOnChange
+		= EAdsLocalReadFlag
+		| EAdsUpdateOnChange
+		| EAdsCallbackFlag
+		UMETA(DisplayName = "Read On Change"),
+	// Read on local cycle
+	Read
+		= EAdsRemoteReadFlag
+		| EAdsLocalReadFlag
+		UMETA(DisplayName = "Read"),
 	// Write on local cycle
-	Write  UMETA(DisplayName = "Write"),
+	Write
+		= EAdsRemoteWriteFlag
+		| EAdsLocalWriteFlag
+		UMETA(DisplayName = "Write"),
 	// Write on change
-	WriteOnChange  UMETA(DisplayName = "Write On Change")
+	WriteOnChange
+		= EAdsRemoteWriteFlag
+		| EAdsLocalWriteFlag
+		| EAdsUpdateOnChange
+		UMETA(DisplayName = "Write On Change"),
+	// Read and write on change
+	ReadWriteOnChange
+		= EAdsLocalReadFlag
+		| EAdsLocalWriteFlag
+		| EAdsRemoteWriteFlag
+		| EAdsUpdateOnChange
+		| EAdsCallbackFlag
+		UMETA(DisplayName = "Read/Write On Change")
 };
 
-constexpr const TCHAR* AdsAccessTypeName(EAdsAccessType type)
+template<typename EnumType>
+FString GetEnumTypeName(EnumType val, const TCHAR* name)
 {
-	switch (type)
-	{
-	case EAdsAccessType::None:
-		return TEXT("None");
-	case EAdsAccessType::Read:
-		return TEXT("Read");
-	case EAdsAccessType::Write:
-		return TEXT("Write");
-	case EAdsAccessType::ReadCyclic:
-		return TEXT("Read cyclic");
-	case EAdsAccessType::ReadOnChange:
-		return TEXT("Read on change");
-	case EAdsAccessType::WriteOnChange:
-		return TEXT("Write on change");
-	default:
-		return TEXT("Invalid");
-	}
+	const UEnum* enumPtr = FindObject<UEnum>(ANY_PACKAGE, name, true);
+	if (enumPtr)
+		return enumPtr->GetDisplayNameTextByValue(static_cast<int64>(val)).ToString();
+
+	return FString(TEXT("Invalid"));
 }
+
+inline FString GetAdsAccessTypeName(EAdsAccessMode val)
+{
+	return GetEnumTypeName<EAdsAccessMode>(val, TEXT("EAdsAccessMode"));
+}
+
+template <class T>
+constexpr bool CheckAdsUpdateFlag(T accessMode, uint8 flag) { return (static_cast<uint8>(accessMode) & flag); }
+
+USTRUCT(BlueprintType)
+struct FTcAdsVariableInfo
+{
+	GENERATED_BODY()
+
+	/**
+	 * @brief Full name of the remote variable (including scope)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ADS Info", meta = (DisplayName = "ADS Name"))
+	FString adsName;
+	/**
+	 * @brief Ads access mode
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ADS Info", meta = (DisplayName = "ADS Access Mode"))
+	EAdsAccessMode adsMode;
+	/**
+	 * @brief Multiple of the connected master's base time interval to update the variable.
+	 * example: if update interval is 3 and the master's base time is 0.01 s the variable will be updated every 0.03 s.
+	 * if value is <= 1 the value will update with every tick
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ADS Info", meta = (DisplayName = "Cyckle Multiplier"))
+	int32 cycleMultiplier;
+	/**
+	 * @brief Current value
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ADS Info", meta = (DisplayName = "Initial Value"))
+	float initialValue;
+	/**
+	 * @brief Instance of master module \link ATcAdsAsyncMaster \endlink to handle the communication
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ADS Info", meta = (DisplayName = "ADS Master"))
+	ATcAdsAsyncMaster* adsMaster;
+};
 
 // Struct for getting data from ADS using ADSIGRP_SUMUP_READ or ADSIGRP_SUMUP_WRITE
 struct FDataPar
 {
-	unsigned long indexGroup;	// index group in ADS server interface
-	unsigned long indexOffset;	// index offset in ADS server interface
-	unsigned long length;		// count of bytes to read	
+	ULONG indexGroup;	// index group in ADS server interface
+	ULONG indexOffset;	// index offset in ADS server interface
+	ULONG length;		// count of bytes to read	
 };
 
 /*!
@@ -236,15 +309,14 @@ public:
 
 struct TcAdsCallbackStruct
 {
-	explicit TcAdsCallbackStruct(UTcAdsVariable* pVar = nullptr) : variable(pVar), hUser(0), hNotification(0) {}
+	explicit TcAdsCallbackStruct(UTcAdsVariable* pVar = nullptr, int32 idx = 0) : variable(pVar), hUser(0), hNotification(0), index(idx) {}
 
 	UTcAdsVariable* variable;
 	ULONG hUser;
 	ULONG hNotification;
+	int32 index;
 
 	bool operator ==(const UTcAdsVariable* other) const { return (other == variable);}
 	bool operator !=(const UTcAdsVariable* other) const { return (other != variable);}
 };
 
-// Create custom UE log category
-DECLARE_LOG_CATEGORY_EXTERN(LogTcAds, Display, Log);
